@@ -2815,9 +2815,8 @@ async function submitProfileAuth(action) {
 
     try {
         const result = signUp
-            ? await window.coucouSupabase.auth.signUp({ email, password })
+            ? await window.coucouSupabase.auth.signUp({ email, password, options: { emailRedirectTo: "https://balpreet192.github.io/Coucou/" } })
             : await window.coucouSupabase.auth.signInWithPassword({ email, password });
-
         if (result.error) {
             setProfileAuthState(result.error.message, true);
             return;
