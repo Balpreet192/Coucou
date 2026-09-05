@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+       <meta charset="UTF-8">
+       <title>Coucou</title>
+       <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+       <header>
+              <h1>Coucou</h1>
+              <p>Your little corner for movies, music, art, books & people.</p>
+              <nav class="main-nav">
+                     <a href="#" data-section="home" class="nav-link active">Home</a>
+                     <a href="#" data-section="discover" class="nav-link">Discover</a>
+                     <a href="#" data-section="movies" class="nav-link">Movies</a>
+                     <a href="#" data-section="music" class="nav-link">Music</a>
+                     <a href="#" data-section="art" class="nav-link">Art</a>
+                     <a href="#" data-section="books" class="nav-link">Books</a>
+                     <a href="#" data-section="my-posts" class="nav-link">My Posts</a>
+                     <a href="#" data-section="profile" class="nav-link">Profile</a>
+              </nav>
+       </header>
+
+       <main class="main-content">
+              <!-- HOME SECTION -->
+              <section id="home" class="content-section active">
+                     <h2>Home</h2>
+                     <p>Posts from people you follow.</p>
+              </section>
+
+              <!-- DISCOVER SECTION -->
+              <section id="discover" class="content-section">
+                     <h2>Discover</h2>
+                     <p>Find new people and interesting creators.</p>
+                     <div id="creators-grid" class="creators-grid" aria-live="polite"></div>
+              </section>
+
+              <!-- MOVIES SECTION -->
+              <section id="movies" class="content-section">
+                     <h2>Movies</h2>
+                     <p>Discover, rate and talk about movies.</p>
+                     <div id="movie-grid" class="movie-grid" aria-live="polite"></div>
+                     <div id="movie-detail" class="movie-detail" hidden></div>
+              </section>
+
+              <!-- MUSIC SECTION -->
+              <section id="music" class="content-section">
+                     <h2>Music</h2>
+                     <p>Search MusicBrainz for real artists and bands, then explore their releases.</p>
+
+                     <form id="music-search-form" class="music-search-form">
+                            <input type="text" id="music-search-input" class="music-search-input" placeholder="Search an artist or band (e.g. Linkin Park)" autocomplete="off">
+                            <button type="submit" id="music-search-button" class="music-search-button">Search</button>
+                     </form>
+
+                     <div id="music-state" class="music-state" aria-live="polite"></div>
+
+                     <p id="music-section-label" class="music-section-label"></p>
+                     <div id="music-grid" class="music-grid" aria-live="polite"></div>
+                     <div id="music-load-more-wrap" class="load-more-wrap" hidden>
+                            <button type="button" id="music-load-more-button" class="load-more-button">Load more artists</button>
+                     </div>
+
+                     <div id="music-discover-section" class="discover-section">
+                            <p class="music-section-label">Discover more artists</p>
+                            <div id="music-discover-state" class="music-state" aria-live="polite"></div>
+                            <div id="music-discover-grid" class="music-grid" aria-live="polite"></div>
+                            <div class="load-more-wrap">
+                                   <button type="button" id="music-discover-load-more-button" class="load-more-button">Load more</button>
+                            </div>
+                     </div>
+
+ <div id="music-detail" class="music-detail" hidden></div>
+              </section>
+
+
+
+              <!-- ART SECTION -->
+              <section id="art" class="content-section">
+                     <h2>Art</h2>
+                     <p>Search real painters and illustrators, then explore a few of their most prominent works.</p>
+
+                     <form id="art-search-form" class="art-search-form">
+                            <input type="text" id="art-search-input" class="art-search-input" placeholder="Search an artist or painter (e.g. Vincent van Gogh)" autocomplete="off">
+                            <button type="submit" id="art-search-button" class="art-search-button">Search</button>
+                     </form>
+
+                     <div id="art-state" class="art-state" aria-live="polite"></div>
+
+                     <p id="art-section-label" class="art-section-label"></p>
+                     <div id="art-artist-grid" class="art-artist-grid" aria-live="polite"></div>
+                     <div id="art-load-more-wrap" class="load-more-wrap" hidden>
+                            <button type="button" id="art-load-more-button" class="load-more-button">Load more artists</button>
+                     </div>
+
+                     <div id="art-discover-section" class="discover-section">
+                            <p class="art-section-label">Discover more artists</p>
+                            <div id="art-discover-state" class="art-state" aria-live="polite"></div>
+                            <div id="art-discover-grid" class="art-artist-grid" aria-live="polite"></div>
+                            <div class="load-more-wrap">
+                                   <button type="button" id="art-discover-load-more-button" class="load-more-button">Load more</button>
+                            </div>
+                     </div>
+
+                     <div id="art-detail" class="art-detail" hidden></div>
+              </section>
+
+              <!-- BOOKS SECTION -->
+              <section id="books" class="content-section">
+                     <h2>Books</h2>
+                     <p>Search Open Library for real books and authors, or browse cozy picks below.</p>
+
+                     <form id="book-search-form" class="book-search-form">
+                            <input type="text" id="book-search-input" class="book-search-input" placeholder="Search a book or author (e.g. Circe)" autocomplete="off">
+                            <button type="submit" id="book-search-button" class="book-search-button">Search</button>
+                     </form>
+
+                     <div id="book-state" class="music-state" aria-live="polite"></div>
+
+                     <p id="book-section-label" class="music-section-label">Featured picks</p>
+                     <div id="book-grid" class="book-grid" aria-live="polite"></div>
+                     <div id="book-load-more-wrap" class="load-more-wrap" hidden>
+                            <button type="button" id="book-load-more-button" class="load-more-button">Load more books</button>
+                     </div>
+
+                     <div id="book-discover-section" class="discover-section">
+                            <p class="music-section-label">Discover more books</p>
+                            <div id="book-discover-state" class="music-state" aria-live="polite"></div>
+                            <div id="book-discover-grid" class="book-grid" aria-live="polite"></div>
+                            <div class="load-more-wrap">
+                                   <button type="button" id="book-discover-load-more-button" class="load-more-button">Load more</button>
+                            </div>
+                     </div>
+
+                     <div id="book-detail" class="book-detail" hidden></div>
+              </section>
+
+              <!-- MY POSTS SECTION -->
+              <section id="my-posts" class="content-section">
+                     <h2>My Posts</h2>
+                     <p>Your personal thoughts and stories.</p>
+                     <div class="my-posts-container">
+                            <div class="create-post-card">
+                                   <h3>Create a Post</h3>
+                                   <textarea id="post-text" placeholder="Share a thought..."></textarea>
+                                   <button onclick="createPost()">Post</button>
+                            </div>
+                            <div class="my-posts-feed">
+                                   <p id="empty-my-posts-message">Your posts will appear here.</p>
+                            </div>
+                     </div>
+              </section>
+
+              <!-- PROFILE SECTION -->
+              <section id="profile" class="content-section">
+                     <div class="profile-container">
+                            <div class="profile-card">
+                                   <div class="profile-picture">
+                                          <p>Photo</p>
+                                   </div>
+                                   <h2 id="profile-display-name">Your Name</h2>
+                                   <p id="profile-display-handle">@username</p>
+                                   <p>Your bio will go here.</p>
+                                   <div class="profile-stats">
+                                          <span><strong>0</strong> posts</span>
+                                          <span><strong>0</strong> Followers</span>
+                                          <span><strong>0</strong> Following</span>
+                                   </div>
+                                   <div class="profile-interests">
+                                          <h3>Interests</h3>
+                                          <p>Movies . Music . Art . Books</p>
+                                   </div>
+                                   <div class="profile-auth" id="profile-auth">
+                                          <p class="profile-auth-state" id="profile-auth-state" aria-live="polite"></p>
+                                          <form class="profile-auth-form" id="profile-auth-form">
+                                                 <label>
+                                                        <span>Email</span>
+                                                        <input type="email" id="profile-auth-email" autocomplete="email" required>
+                                                 </label>
+                                                 <label>
+                                                        <span>Password</span>
+                                                        <input type="password" id="profile-auth-password" autocomplete="current-password" minlength="6" required>
+                                                 </label>
+                                                 <div class="profile-auth-actions">
+                                                        <button type="submit" data-auth-action="sign-in">Sign in</button>
+                                                        <button type="button" data-auth-action="sign-up">Create account</button>
+                                                 </div>
+                                          </form>
+                                          <button type="button" class="profile-sign-out" id="profile-sign-out" hidden>Sign out</button>
+                                   </div>
+                            </div>
+
+                            <div class="create-post-card">
+                                   <h3>Create a Post</h3>
+                                   <textarea id="post-text" placeholder="Share a thought..."></textarea>
+                                   <button onclick="createPost()">Post</button>
+                            </div>
+
+                            <div class="collections-card">
+                                   <h3>My Collections</h3>
+                                   <div class="collections-tabs">
+                                          <button class="collection-tab active" data-collection="movies">Movies</button>
+                                          <button class="collection-tab" data-collection="music">Music</button>
+                                          <button class="collection-tab" data-collection="art">Art</button>
+                                          <button class="collection-tab" data-collection="books">Books</button>
+                                   </div>
+                                   <div class="collections-display">
+                                          <div id="collection-movies" class="collection-view active">
+                                                 <div id="saved-movies-list" class="saved-items-list">
+                                                        <p id="empty-movies-message">Your saved movies will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-music" class="collection-view">
+                                                 <div id="saved-music-list" class="saved-items-list">
+                                                        <p id="empty-music-message">Your saved music will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-art" class="collection-view">
+                                                 <div id="saved-art-list" class="saved-items-list">
+                                                        <p id="empty-art-message">Your saved art will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-books" class="collection-view">
+                                                 <div id="saved-books-list" class="saved-items-list">
+                                                        <p id="empty-books-message">Your saved books will appear here.</p>
+                                                 </div>
+                                          </div>
+                                   </div>
+                            </div>
+
+                            <div class="profile-posts-card">
+                                   <h3>My Posts</h3>
+                                   <div class="profile-posts">
+                                          <p id="empty-post-message">Your photos and thoughts will appear here.</p>
+                                   </div>
+                            </div>
+                     </div>
+              </section>
+       </main>
+
+       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+       <script src="supabase-config.js"></script>
+       <script src="musicbrainz.js"></script>
+       <script src="artapi.js"></script>
+       <script src="booksapi.js"></script>
+       <script src="script.js"></script>
+</body>
+
+</html>
