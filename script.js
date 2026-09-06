@@ -2755,6 +2755,9 @@ function renderMovieDetail(movie) {
 // POSTS STORAGE & DISPLAY LOGIC
 const COUCOU_POSTS_KEY = "coucouPosts";
 
+let currentSessionUser = null;
+let currentAuthMode = "sign-in";
+
 function getStoredPosts() {
     try {
         const savedPosts = JSON.parse(localStorage.getItem(COUCOU_POSTS_KEY) || "[]");
@@ -2776,47 +2779,92 @@ function setProfileAuthState(message, isError) {
     state.classList.toggle("profile-auth-error", Boolean(isError));
 }
 
+function reloadPostFeeds() {
+    const profileFeed = document.querySelector(".profile-posts");
+    const myPostsFeed = document.querySelector(".my-posts-feed");
+    if (profileFeed) profileFeed.innerHTML = '<p id="empty-post-message">Your photos and thoughts will appear here.</p>';
+    if (myPostsFeed) myPostsFeed.innerHTML = '<p id="empty-my-posts-message">Your posts will appear here.</p>';
+    loadStoredPosts();
+    loadMyPosts();
+}
+
 function updateProfileAuthUi(user) {
+    currentSessionUser = user || null;
+
     const name = document.getElementById("profile-display-name");
     const handle = document.getElementById("profile-display-handle");
-    const form = document.getElementById("profile-auth-form");
-    const signOutButton = document.getElementById("profile-sign-out");
+    const signedOutView = document.getElementById("auth-signed-out-view");
+    const signedInView = document.getElementById("auth-signed-in-view");
+    const accountEmailDisplay = document.getElementById("account-email-display");
+    const confirmEmailTarget = document.getElementById("confirm-email-target");
+
+    // Reset account deletion confirm box
+    const confirmBox = document.getElementById("delete-account-confirm-box");
+    const confirmInput = document.getElementById("delete-confirm-email-input");
+    const confirmBtn = document.getElementById("confirm-delete-account-btn");
+    if (confirmBox) confirmBox.hidden = true;
+    if (confirmInput) confirmInput.value = "";
+    if (confirmBtn) confirmBtn.disabled = true;
 
     if (user) {
         const metadata = user.user_metadata || {};
-        const displayName = metadata.full_name || metadata.name || user.email || "Your Name";
+        const displayName = metadata.full_name || metadata.name || "Member";
+        const userHandle = "@" + (metadata.username || (user.email ? user.email.split("@")[0] : "username"));
+
         if (name) name.textContent = displayName;
-        if (handle) handle.textContent = user.email || "@username";
-        if (form) form.hidden = true;
-        if (signOutButton) signOutButton.hidden = false;
+        if (handle) handle.textContent = userHandle;
+        if (accountEmailDisplay) accountEmailDisplay.textContent = user.email || "";
+        if (confirmEmailTarget) confirmEmailTarget.textContent = user.email || "";
+
+        if (signedOutView) signedOutView.hidden = true;
+        if (signedInView) signedInView.hidden = false;
         setProfileAuthState("Signed in.");
-        return;
+    } else {
+        if (name) name.textContent = "Your Name";
+        if (handle) handle.textContent = "@username";
+        if (accountEmailDisplay) accountEmailDisplay.textContent = "";
+        if (confirmEmailTarget) confirmEmailTarget.textContent = "";
+
+        if (signedOutView) signedOutView.hidden = false;
+        if (signedInView) signedInView.hidden = true;
+        setProfileAuthState("");
     }
 
-    if (name) name.textContent = "Your Name";
-    if (handle) handle.textContent = "@username";
-    if (form) form.hidden = false;
-    if (signOutButton) signOutButton.hidden = true;
-    setProfileAuthState("");
+    reloadPostFeeds();
 }
 
 async function submitProfileAuth(action) {
-    const form = document.getElementById("profile-auth-form");
     const emailInput = document.getElementById("profile-auth-email");
     const passwordInput = document.getElementById("profile-auth-password");
-    if (!form || !emailInput || !passwordInput || !window.coucouSupabase) return;
-
-    if (!form.reportValidity()) return;
+    if (!emailInput || !passwordInput || !window.coucouSupabase) return;
 
     const email = emailInput.value.trim();
     const password = passwordInput.value;
+
+    if (!email || !email.includes("@") || !email.includes(".")) {
+        setProfileAuthState("Please enter a valid email address.", true);
+        emailInput.focus();
+        return;
+    }
+
+    if (!password || password.length < 6) {
+        setProfileAuthState("Password must be at least 6 characters.", true);
+        passwordInput.focus();
+        return;
+    }
+
     const signUp = action === "sign-up";
     setProfileAuthState(signUp ? "Creating account..." : "Signing in...");
 
     try {
         const result = signUp
-            ? await window.coucouSupabase.auth.signUp({ email, password, options: { emailRedirectTo: "https://balpreet192.github.io/Coucou/" } })
+            ? await window.coucouSupabase.auth.signUp({
+                  email,
+                  password,
+                  options: { emailRedirectTo: "https://balpreet192.github.io/Coucou/" }
+              })
             : await window.coucouSupabase.auth.signInWithPassword({ email, password });
+
         if (result.error) {
             setProfileAuthState(result.error.message, true);
             return;
@@ -2824,7 +2872,7 @@ async function submitProfileAuth(action) {
 
         passwordInput.value = "";
         if (signUp && !result.data.session) {
-            setProfileAuthState("Check your email to confirm your account.");
+            setProfileAuthState("Account created! Check your email to confirm registration.");
         }
     } catch (error) {
         setProfileAuthState("Unable to complete authentication. Please try again.", true);
@@ -2834,9 +2882,52 @@ async function submitProfileAuth(action) {
 
 function initProfileAuth() {
     const form = document.getElementById("profile-auth-form");
-    const signUpButton = document.querySelector('[data-auth-action="sign-up"]');
     const signOutButton = document.getElementById("profile-sign-out");
-    if (!form || !signUpButton || !signOutButton) return;
+    const togglePassBtn = document.getElementById("toggle-password-btn");
+    const tabSignIn = document.getElementById("auth-tab-sign-in");
+    const tabSignUp = document.getElementById("auth-tab-sign-up");
+    const submitBtn = document.getElementById("auth-submit-btn");
+
+    const deleteAccountBtn = document.getElementById("profile-delete-account-btn");
+    const cancelDeleteBtn = document.getElementById("cancel-delete-account-btn");
+    const confirmDeleteBtn = document.getElementById("confirm-delete-account-btn");
+    const confirmEmailInput = document.getElementById("delete-confirm-email-input");
+    const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
+
+    if (!form || !signOutButton) return;
+
+    // Mode tabs switching
+    if (tabSignIn && tabSignUp && submitBtn) {
+        tabSignIn.addEventListener("click", () => {
+            currentAuthMode = "sign-in";
+            tabSignIn.classList.add("active");
+            tabSignUp.classList.remove("active");
+            tabSignIn.setAttribute("aria-selected", "true");
+            tabSignUp.setAttribute("aria-selected", "false");
+            submitBtn.textContent = "Sign in";
+        });
+
+        tabSignUp.addEventListener("click", () => {
+            currentAuthMode = "sign-up";
+            tabSignUp.classList.add("active");
+            tabSignIn.classList.remove("active");
+            tabSignUp.setAttribute("aria-selected", "true");
+            tabSignIn.setAttribute("aria-selected", "false");
+            submitBtn.textContent = "Create account";
+        });
+    }
+
+    // Password visibility toggle
+    if (togglePassBtn) {
+        togglePassBtn.addEventListener("click", () => {
+            const passInput = document.getElementById("profile-auth-password");
+            if (passInput) {
+                const isPass = passInput.type === "password";
+                passInput.type = isPass ? "text" : "password";
+                togglePassBtn.textContent = isPass ? "🙈" : "👁️";
+            }
+        });
+    }
 
     if (!window.coucouSupabase) {
         setProfileAuthState("Authentication is unavailable right now.", true);
@@ -2845,11 +2936,7 @@ function initProfileAuth() {
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
-        void submitProfileAuth("sign-in");
-    });
-
-    signUpButton.addEventListener("click", () => {
-        void submitProfileAuth("sign-up");
+        void submitProfileAuth(currentAuthMode);
     });
 
     signOutButton.addEventListener("click", async () => {
@@ -2857,6 +2944,67 @@ function initProfileAuth() {
         const { error } = await window.coucouSupabase.auth.signOut();
         if (error) setProfileAuthState(error.message, true);
     });
+
+    // Account deletion UI handlers
+    if (deleteAccountBtn && deleteConfirmBox) {
+        deleteAccountBtn.addEventListener("click", () => {
+            deleteConfirmBox.hidden = false;
+        });
+    }
+
+    if (cancelDeleteBtn && deleteConfirmBox) {
+        cancelDeleteBtn.addEventListener("click", () => {
+            deleteConfirmBox.hidden = true;
+            if (confirmEmailInput) confirmEmailInput.value = "";
+            if (confirmDeleteBtn) confirmDeleteBtn.disabled = true;
+        });
+    }
+
+    if (confirmEmailInput && confirmDeleteBtn) {
+        confirmEmailInput.addEventListener("input", () => {
+            const userEmail = currentSessionUser ? (currentSessionUser.email || "").trim().toLowerCase() : "";
+            const entered = confirmEmailInput.value.trim().toLowerCase();
+            confirmDeleteBtn.disabled = !(userEmail && entered === userEmail);
+        });
+    }
+
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener("click", async () => {
+            if (!currentSessionUser || !window.coucouSupabase) return;
+
+            setProfileAuthState("Deleting account permanently...");
+            confirmDeleteBtn.disabled = true;
+
+            try {
+                let deleteSuccess = false;
+                const { error: rpcError } = await window.coucouSupabase.rpc("delete_user_account");
+
+                if (!rpcError) {
+                    deleteSuccess = true;
+                } else {
+                    const { error: fnError } = await window.coucouSupabase.functions.invoke("delete-account");
+                    if (!fnError) {
+                        deleteSuccess = true;
+                    } else {
+                        setProfileAuthState("Account deletion failed: " + rpcError.message, true);
+                        console.error("[Account Delete] Deletion failed:", rpcError, fnError);
+                        confirmDeleteBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                if (deleteSuccess) {
+                    await window.coucouSupabase.auth.signOut();
+                    updateProfileAuthUi(null);
+                    setProfileAuthState("Your account has been permanently deleted.");
+                }
+            } catch (err) {
+                setProfileAuthState("Account deletion failed: " + (err.message || err), true);
+                console.error("[Account Delete] Error:", err);
+                confirmDeleteBtn.disabled = false;
+            }
+        });
+    }
 
     window.coucouSupabase.auth.getSession()
         .then(({ data, error }) => {
@@ -2902,6 +3050,133 @@ async function syncPostToSupabase(postData) {
     }
 }
 
+function isUserPostAuthor(postData, user) {
+    if (!user) return false;
+    if (postData.author_id && postData.author_id === user.id) return true;
+    if (postData.author_email && postData.author_email === user.email) return true;
+    return false;
+}
+
+async function handlePostDelete(postData, postElement) {
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    if (window.coucouSupabase && currentSessionUser && postData.author_id) {
+        const { error } = await window.coucouSupabase
+            .from("posts")
+            .delete()
+            .or(`client_post_id.eq.${postData.id},id.eq.${postData.id}`);
+
+        if (error) {
+            alert("Could not delete post from database: " + error.message);
+            console.error("[Posts] Supabase post delete failed:", error);
+            return;
+        }
+    }
+
+    // Remove from local storage
+    const savedPosts = getStoredPosts();
+    const updatedPosts = savedPosts.filter((p) => p.id !== postData.id);
+    saveStoredPosts(updatedPosts);
+
+    // Remove from DOM
+    const allMatchingPosts = document.querySelectorAll(`.post-card[data-id="${postData.id}"]`);
+    allMatchingPosts.forEach((el) => el.remove());
+}
+
+async function syncCommentToSupabase(postData, commentObj) {
+    if (!window.coucouSupabase || !currentSessionUser) return;
+
+    try {
+        const { data: dbPosts } = await window.coucouSupabase
+            .from("posts")
+            .select("id")
+            .eq("client_post_id", postData.id)
+            .limit(1);
+
+        const dbPostId = dbPosts && dbPosts[0] ? dbPosts[0].id : null;
+        if (!dbPostId) return;
+
+        const { error } = await window.coucouSupabase
+            .from("comments")
+            .insert({
+                post_id: dbPostId,
+                author_id: currentSessionUser.id,
+                client_comment_id: commentObj.id,
+                text: commentObj.text
+            });
+
+        if (error) {
+            console.error("[Comments] Supabase comment insert failed:", error.message);
+        }
+    } catch (err) {
+        console.error("[Comments] Supabase comment insert failed:", err);
+    }
+}
+
+async function handleCommentDelete(postData, commentObj, commentElement) {
+    if (!confirm("Are you sure you want to delete this comment?")) return;
+
+    if (window.coucouSupabase && currentSessionUser && commentObj.id) {
+        const { error } = await window.coucouSupabase
+            .from("comments")
+            .delete()
+            .or(`client_comment_id.eq.${commentObj.id},id.eq.${commentObj.id}`);
+
+        if (error) {
+            alert("Could not delete comment from database: " + error.message);
+            console.error("[Comments] Supabase comment delete failed:", error);
+            return;
+        }
+    }
+
+    // Update local storage
+    const savedPosts = getStoredPosts();
+    const matchingPost = savedPosts.find((p) => p.id === postData.id);
+    if (matchingPost && Array.isArray(matchingPost.comments)) {
+        matchingPost.comments = matchingPost.comments.filter((c) => {
+            return typeof c === "string" ? c !== commentObj.text : c.id !== commentObj.id;
+        });
+        saveStoredPosts(savedPosts);
+    }
+
+    commentElement.remove();
+}
+
+function renderCommentItem(commentList, postData, commentData) {
+    const commentObj = typeof commentData === "string"
+        ? { id: "cmt-" + Math.random().toString(16).slice(2), text: commentData, author_id: null, author_name: "Member" }
+        : commentData;
+
+    const commentItem = document.createElement("div");
+    commentItem.className = "comment-item";
+    if (commentObj.id) commentItem.dataset.commentId = commentObj.id;
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "comment-text";
+    textSpan.textContent = (commentObj.author_name ? commentObj.author_name + ": " : "") + commentObj.text;
+    commentItem.appendChild(textSpan);
+
+    const isCommentOwner = currentSessionUser && commentObj.author_id && commentObj.author_id === currentSessionUser.id;
+    const isPostOwner = currentSessionUser && (
+        (postData.author_id && postData.author_id === currentSessionUser.id) ||
+        isUserPostAuthor(postData, currentSessionUser)
+    );
+
+    if (isCommentOwner || isPostOwner) {
+        const deleteCommentBtn = document.createElement("button");
+        deleteCommentBtn.type = "button";
+        deleteCommentBtn.className = "comment-delete-btn";
+        deleteCommentBtn.title = "Delete comment";
+        deleteCommentBtn.textContent = "✕";
+        deleteCommentBtn.addEventListener("click", () => {
+            handleCommentDelete(postData, commentObj, commentItem);
+        });
+        commentItem.appendChild(deleteCommentBtn);
+    }
+
+    commentList.appendChild(commentItem);
+}
+
 function createPostElement(postData) {
     const post = document.createElement("div");
     post.className = "post-card";
@@ -2913,13 +3188,25 @@ function createPostElement(postData) {
     header.className = "post-header";
 
     const name = document.createElement("strong");
-    name.textContent = "Your Name";
+    name.textContent = postData.author_name || "Your Name";
 
     const time = document.createElement("span");
     time.textContent = " • Just now";
 
     header.appendChild(name);
     header.appendChild(time);
+
+    if (currentSessionUser && isUserPostAuthor(postData, currentSessionUser)) {
+        const deletePostBtn = document.createElement("button");
+        deletePostBtn.type = "button";
+        deletePostBtn.className = "post-delete-btn";
+        deletePostBtn.title = "Delete post";
+        deletePostBtn.textContent = "🗑️ Delete";
+        deletePostBtn.addEventListener("click", () => {
+            handlePostDelete(postData, post);
+        });
+        header.appendChild(deletePostBtn);
+    }
 
     const content = document.createElement("p");
     content.className = "post-content";
@@ -2998,11 +3285,8 @@ function createPostElement(postData) {
     commentList.className = "comment-list";
 
     if (Array.isArray(postData.comments)) {
-        postData.comments.forEach((commentText) => {
-            const commentItem = document.createElement("div");
-            commentItem.className = "comment-item";
-            commentItem.textContent = commentText;
-            commentList.appendChild(commentItem);
+        postData.comments.forEach((commentData) => {
+            renderCommentItem(commentList, postData, commentData);
         });
     }
 
@@ -3066,7 +3350,7 @@ function createPostElement(postData) {
         }
     });
 
-    commentForm.addEventListener("submit", (event) => {
+    commentForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const commentText = commentInput.value.trim();
 
@@ -3074,21 +3358,32 @@ function createPostElement(postData) {
             return;
         }
 
-        const commentItem = document.createElement("div");
-        commentItem.className = "comment-item";
-        commentItem.textContent = commentText;
+        const commentObj = {
+            id: "cmt-" + Date.now() + Math.random().toString(16).slice(2),
+            text: commentText,
+            author_id: currentSessionUser ? currentSessionUser.id : null,
+            author_name: currentSessionUser
+                ? (currentSessionUser.user_metadata?.full_name || currentSessionUser.user_metadata?.name || "Member")
+                : "Guest",
+            created_at: new Date().toISOString()
+        };
 
-        commentList.appendChild(commentItem);
+        // Sync comment to Supabase
+        await syncCommentToSupabase(postData, commentObj);
 
+        // Save to local storage
         const allPosts = getStoredPosts();
         const matchingPost = allPosts.find((item) => item.id === postData.id);
         if (matchingPost) {
             if (!Array.isArray(matchingPost.comments)) {
                 matchingPost.comments = [];
             }
-            matchingPost.comments.push(commentText);
+            matchingPost.comments.push(commentObj);
             saveStoredPosts(allPosts);
         }
+
+        // Render comment in DOM
+        renderCommentItem(commentList, postData, commentObj);
 
         commentInput.value = "";
         commentForm.style.display = "none";
@@ -3144,7 +3439,11 @@ function loadMyPosts() {
 }
 
 function createPost() {
-    const textBox = document.getElementById("post-text");
+    const activeSection = document.querySelector(".content-section.active");
+    let textBox = activeSection ? activeSection.querySelector("textarea") : null;
+    if (!textBox) {
+        textBox = document.getElementById("post-text") || document.getElementById("profile-post-text");
+    }
     if (!textBox) return;
 
     const text = textBox.value.trim();
@@ -3155,32 +3454,26 @@ function createPost() {
 
     const postData = {
         id: Date.now() + Math.random().toString(16).slice(2),
+        author_id: currentSessionUser ? currentSessionUser.id : null,
+        author_email: currentSessionUser ? currentSessionUser.email : null,
+        author_name: currentSessionUser
+            ? (currentSessionUser.user_metadata?.full_name || currentSessionUser.user_metadata?.name || "Member")
+            : "Your Name",
         text,
         likes: 0,
         liked: false,
-        comments: []
+        comments: [],
+        created_at: new Date().toISOString()
     };
-
-    const post = createPostElement(postData);
-
-    const container = document.querySelector(".profile-posts");
-    if (container) {
-        const emptyMessage = document.getElementById("empty-post-message");
-        if (emptyMessage) {
-            emptyMessage.remove();
-        }
-
-        container.appendChild(post);
-    }
 
     const savedPosts = getStoredPosts();
     savedPosts.push(postData);
     saveStoredPosts(savedPosts);
+
     void syncPostToSupabase(postData);
 
     textBox.value = "";
-    loadStoredPosts();
-    loadMyPosts();
+    reloadPostFeeds();
 }
 
 window.addEventListener("DOMContentLoaded", () => {

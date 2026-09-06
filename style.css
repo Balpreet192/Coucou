@@ -162,6 +162,36 @@ header p {
       color: #a94442;
 }
 
+/* AUTH MODE TABS */
+.auth-mode-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      background-color: #f0f8fd;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid #d9edf5;
+}
+
+.auth-mode-tab {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: #6b4c5a;
+      font-weight: 600;
+      font-size: 13px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+}
+
+.auth-mode-tab.active {
+      background-color: white;
+      color: #d7a26d;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
 .profile-auth-form {
       display: grid;
       gap: 10px;
@@ -183,10 +213,33 @@ header p {
       font: inherit;
 }
 
+.password-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+}
+
+.password-input-wrap input {
+      padding-right: 40px !important;
+}
+
+.password-toggle-btn {
+      position: absolute;
+      right: 8px;
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+      color: #557080;
+}
+
 .profile-auth-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      margin-top: 4px;
 }
 
 .profile-auth-actions button,
@@ -200,8 +253,109 @@ header p {
       font-weight: 600;
 }
 
+.auth-submit-btn {
+      width: 100%;
+}
+
 .profile-sign-out {
       background: #557080;
+}
+
+/* ACCOUNT SETTINGS & DELETION */
+.account-settings-card {
+      text-align: left;
+}
+
+.account-settings-card h4 {
+      color: #6b4c5a;
+      font-size: 16px;
+      margin-bottom: 8px;
+}
+
+.account-email-info {
+      font-size: 14px;
+      color: #557080;
+      margin-bottom: 14px;
+      word-break: break-all;
+}
+
+.account-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+}
+
+.profile-delete-account-btn {
+      background-color: #e74c3c !important;
+      color: white !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+}
+
+.profile-delete-account-btn:hover {
+      background-color: #c0392b !important;
+}
+
+.delete-account-confirm-box {
+      margin-top: 14px;
+      padding: 14px;
+      background-color: #fff5f5;
+      border: 1px solid #f5c6cb;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+}
+
+.delete-warning-banner {
+      font-size: 13px;
+      color: #721c24;
+      line-height: 1.4;
+}
+
+.delete-warning-banner p {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #721c24;
+}
+
+.delete-confirm-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+}
+
+.btn-cancel-delete {
+      background: #e2e8f0;
+      color: #4a5568;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 12px;
+}
+
+.btn-confirm-delete {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 12px;
+}
+
+.btn-confirm-delete:disabled {
+      background: #f5b7b1;
+      cursor: not-allowed;
+      opacity: 0.7;
 }
 
 .create-post-card {
@@ -2640,6 +2794,50 @@ header p {
       border-radius: 8px;
       padding: 8px 10px;
       font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+}
+
+.comment-text {
+      flex: 1;
+      word-break: break-word;
+}
+
+.post-delete-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid #f5c6cb;
+      color: #c0392b;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+}
+
+.post-delete-btn:hover {
+      background-color: #f8d7da;
+}
+
+.comment-delete-btn {
+      background: transparent;
+      border: none;
+      color: #e74c3c;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      line-height: 1;
+      opacity: 0.7;
+      transition: opacity 0.2s ease;
+}
+
+.comment-delete-btn:hover {
+      opacity: 1;
+      background-color: rgba(231, 76, 60, 0.1);
 }
 
 @keyframes sparkle-pop {

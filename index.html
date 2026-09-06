@@ -175,27 +175,64 @@
                                    </div>
                                    <div class="profile-auth" id="profile-auth">
                                           <p class="profile-auth-state" id="profile-auth-state" aria-live="polite"></p>
-                                          <form class="profile-auth-form" id="profile-auth-form">
-                                                 <label>
-                                                        <span>Email</span>
-                                                        <input type="email" id="profile-auth-email" autocomplete="email" required>
-                                                 </label>
-                                                 <label>
-                                                        <span>Password</span>
-                                                        <input type="password" id="profile-auth-password" autocomplete="current-password" minlength="6" required>
-                                                 </label>
-                                                 <div class="profile-auth-actions">
-                                                        <button type="submit" data-auth-action="sign-in">Sign in</button>
-                                                        <button type="button" data-auth-action="sign-up">Create account</button>
+
+                                          <!-- Signed Out Authentication View -->
+                                          <div id="auth-signed-out-view">
+                                                 <div class="auth-mode-tabs" role="tablist">
+                                                        <button type="button" class="auth-mode-tab active" id="auth-tab-sign-in" data-mode="sign-in" role="tab" aria-selected="true">Sign In</button>
+                                                        <button type="button" class="auth-mode-tab" id="auth-tab-sign-up" data-mode="sign-up" role="tab" aria-selected="false">Create Account</button>
                                                  </div>
-                                          </form>
-                                          <button type="button" class="profile-sign-out" id="profile-sign-out" hidden>Sign out</button>
+                                                 <form class="profile-auth-form" id="profile-auth-form">
+                                                        <label>
+                                                               <span>Email</span>
+                                                               <input type="email" id="profile-auth-email" autocomplete="email" required placeholder="you@example.com">
+                                                        </label>
+                                                        <label>
+                                                               <span>Password</span>
+                                                               <div class="password-input-wrap">
+                                                                      <input type="password" id="profile-auth-password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters">
+                                                                      <button type="button" id="toggle-password-btn" class="password-toggle-btn" title="Show/Hide password" aria-label="Toggle password visibility">👁️</button>
+                                                               </div>
+                                                        </label>
+                                                        <div class="profile-auth-actions">
+                                                               <button type="submit" id="auth-submit-btn" class="auth-submit-btn">Sign in</button>
+                                                        </div>
+                                                 </form>
+                                          </div>
+
+                                          <!-- Signed In Account View -->
+                                          <div id="auth-signed-in-view" hidden>
+                                                 <div class="account-settings-card">
+                                                        <h4>Account Settings</h4>
+                                                        <p class="account-email-info">Signed in as: <strong id="account-email-display"></strong></p>
+                                                        <div class="account-actions">
+                                                               <button type="button" class="profile-sign-out" id="profile-sign-out">Sign out</button>
+                                                               <button type="button" class="profile-delete-account-btn" id="profile-delete-account-btn">Delete Account</button>
+                                                        </div>
+
+                                                        <!-- Delete Account Confirmation Box -->
+                                                        <div class="delete-account-confirm-box" id="delete-account-confirm-box" hidden>
+                                                               <div class="delete-warning-banner">
+                                                                      ⚠️ <strong>Permanent Account Deletion</strong>
+                                                                      <p>Deleting your account will permanently remove your user credentials, posts, and comments. This action cannot be undone.</p>
+                                                               </div>
+                                                               <label>
+                                                                      <span>To confirm permanent deletion, type your email address (<strong id="confirm-email-target"></strong>):</span>
+                                                                      <input type="email" id="delete-confirm-email-input" placeholder="Type your email to confirm" autocomplete="off">
+                                                               </label>
+                                                               <div class="delete-confirm-actions">
+                                                                      <button type="button" class="btn-cancel-delete" id="cancel-delete-account-btn">Cancel</button>
+                                                                      <button type="button" class="btn-confirm-delete" id="confirm-delete-account-btn" disabled>Permanently Delete Account</button>
+                                                               </div>
+                                                        </div>
+                                                 </div>
+                                          </div>
                                    </div>
                             </div>
 
                             <div class="create-post-card">
                                    <h3>Create a Post</h3>
-                                   <textarea id="post-text" placeholder="Share a thought..."></textarea>
+                                   <textarea id="profile-post-text" placeholder="Share a thought..."></textarea>
                                    <button onclick="createPost()">Post</button>
                             </div>
 
