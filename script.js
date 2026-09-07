@@ -2752,24 +2752,8 @@ function renderMovieDetail(movie) {
     detailContainer.appendChild(shell);
 }
 
-// POSTS STORAGE & DISPLAY LOGIC
-const COUCOU_POSTS_KEY = "coucouPosts";
-
 let currentSessionUser = null;
 let currentAuthMode = "sign-in";
-
-function getStoredPosts() {
-    try {
-        const savedPosts = JSON.parse(localStorage.getItem(COUCOU_POSTS_KEY) || "[]");
-        return Array.isArray(savedPosts) ? savedPosts : [];
-    } catch (error) {
-        return [];
-    }
-}
-
-function saveStoredPosts(posts) {
-    localStorage.setItem(COUCOU_POSTS_KEY, JSON.stringify(posts));
-}
 
 function setProfileAuthState(message, isError) {
     const state = document.getElementById("profile-auth-state");
@@ -2779,13 +2763,40 @@ function setProfileAuthState(message, isError) {
     state.classList.toggle("profile-auth-error", Boolean(isError));
 }
 
-function reloadPostFeeds() {
+function renderPosts(posts) {
     const profileFeed = document.querySelector(".profile-posts");
     const myPostsFeed = document.querySelector(".my-posts-feed");
     if (profileFeed) profileFeed.innerHTML = '<p id="empty-post-message">Your photos and thoughts will appear here.</p>';
     if (myPostsFeed) myPostsFeed.innerHTML = '<p id="empty-my-posts-message">Your posts will appear here.</p>';
-    loadStoredPosts();
-    loadMyPosts();
+
+    if (!posts || posts.length === 0) return;
+
+    if (profileFeed) profileFeed.innerHTML = "";
+    if (myPostsFeed) myPostsFeed.innerHTML = "";
+    posts.forEach((post) => {
+        if (profileFeed) profileFeed.appendChild(createPostElement(post));
+        if (myPostsFeed) myPostsFeed.appendChild(createPostElement(post));
+    });
+}
+
+async function loadPostsFromSupabase() {
+    if (!window.coucouSupabase) {
+        renderPosts([]);
+        return;
+    }
+
+    const { data, error } = await window.coucouSupabase
+        .from("posts")
+        .select("id, author_id, text, created_at, comments(id, post_id, author_id, text, created_at)")
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        console.error("[Posts] Supabase post load failed:", error.message);
+        renderPosts([]);
+        return;
+    }
+
+    renderPosts(data || []);
 }
 
 function updateProfileAuthUi(user) {
@@ -2830,7 +2841,7 @@ function updateProfileAuthUi(user) {
         setProfileAuthState("");
     }
 
-    reloadPostFeeds();
+    void loadPostsFromSupabase();
 }
 
 async function submitProfileAuth(action) {
@@ -3025,41 +3036,26 @@ function initProfileAuth() {
 }
 
 async function syncPostToSupabase(postData) {
-    if (!window.coucouSupabase) return;
+    if (!window.coucouSupabase || !currentSessionUser) return null;
 
     try {
-        const { data: authData, error: authError } = await window.coucouSupabase.auth.getUser();
-        if (authError || !authData.user) {
-            console.warn("[Posts] Supabase post sync skipped: no authenticated user.");
-            return;
-        }
-
         const { data: insertedData, error } = await window.coucouSupabase
             .from("posts")
             .insert({
-                author_id: authData.user.id,
-                client_post_id: postData.id,
+                author_id: currentSessionUser.id,
                 text: postData.text
             })
-            .select("id");
+            .select("id, author_id, text, created_at")
+            .single();
 
         if (error) {
-            console.error("[Posts] Supabase post sync failed:", error.message);
-            return;
+            throw error;
         }
 
-        const insertedPost = insertedData && insertedData[0];
-        if (!insertedPost || !insertedPost.id) return;
-
-        postData.database_id = insertedPost.id;
-        const savedPosts = getStoredPosts();
-        const storedPost = savedPosts.find((item) => item.id === postData.id);
-        if (storedPost) {
-            storedPost.database_id = insertedPost.id;
-            saveStoredPosts(savedPosts);
-        }
+        return insertedData;
     } catch (error) {
         console.error("[Posts] Supabase post sync failed:", error);
+        return null;
     }
 }
 
@@ -3073,92 +3069,65 @@ function isUserPostAuthor(postData, user) {
 async function handlePostDelete(postData, postElement) {
     if (!confirm("Are you sure you want to delete this post?")) return;
 
-    if (window.coucouSupabase && currentSessionUser && postData.database_id) {
-        const { error } = await window.coucouSupabase
-            .from("posts")
-            .delete()
-            .eq("id", postData.database_id);
+    if (!window.coucouSupabase || !currentSessionUser || postData.author_id !== currentSessionUser.id) return;
 
-        if (error) {
-            alert("Could not delete post from database: " + error.message);
-            console.error("[Posts] Supabase post delete failed:", error);
-            return;
-        }
+    const { error } = await window.coucouSupabase
+        .from("posts")
+        .delete()
+        .eq("id", postData.id);
+
+    if (error) {
+        alert("Could not delete post from database: " + error.message);
+        console.error("[Posts] Supabase post delete failed:", error);
+        return;
     }
 
-    // Remove from local storage
-    const savedPosts = getStoredPosts();
-    const updatedPosts = savedPosts.filter((p) => p.id !== postData.id);
-    saveStoredPosts(updatedPosts);
-
-    // Remove from DOM
-    const allMatchingPosts = document.querySelectorAll(`.post-card[data-id="${postData.id}"]`);
-    allMatchingPosts.forEach((el) => el.remove());
+    void loadPostsFromSupabase();
 }
 
 async function syncCommentToSupabase(postData, commentObj) {
-    if (!window.coucouSupabase || !currentSessionUser) return;
+    if (!window.coucouSupabase || !currentSessionUser) return false;
 
     try {
-        const { data: dbPosts } = await window.coucouSupabase
-            .from("posts")
-            .select("id")
-            .eq("client_post_id", postData.id)
-            .limit(1);
-
-        const dbPostId = dbPosts && dbPosts[0] ? dbPosts[0].id : null;
-        if (!dbPostId) return;
-
         const { error } = await window.coucouSupabase
             .from("comments")
             .insert({
-                post_id: dbPostId,
+                post_id: postData.id,
                 author_id: currentSessionUser.id,
-                client_comment_id: commentObj.id,
                 text: commentObj.text
             });
 
         if (error) {
             console.error("[Comments] Supabase comment insert failed:", error.message);
+            return false;
         }
+        return true;
     } catch (err) {
         console.error("[Comments] Supabase comment insert failed:", err);
+        return false;
     }
 }
 
 async function handleCommentDelete(postData, commentObj, commentElement) {
     if (!confirm("Are you sure you want to delete this comment?")) return;
 
-    if (window.coucouSupabase && currentSessionUser && commentObj.id) {
-        const { error } = await window.coucouSupabase
-            .from("comments")
-            .delete()
-            .or(`client_comment_id.eq.${commentObj.id},id.eq.${commentObj.id}`);
+    if (!window.coucouSupabase || !currentSessionUser || !commentObj.id) return;
 
-        if (error) {
-            alert("Could not delete comment from database: " + error.message);
-            console.error("[Comments] Supabase comment delete failed:", error);
-            return;
-        }
+    const { error } = await window.coucouSupabase
+        .from("comments")
+        .delete()
+        .eq("id", commentObj.id);
+
+    if (error) {
+        alert("Could not delete comment from database: " + error.message);
+        console.error("[Comments] Supabase comment delete failed:", error);
+        return;
     }
 
-    // Update local storage
-    const savedPosts = getStoredPosts();
-    const matchingPost = savedPosts.find((p) => p.id === postData.id);
-    if (matchingPost && Array.isArray(matchingPost.comments)) {
-        matchingPost.comments = matchingPost.comments.filter((c) => {
-            return typeof c === "string" ? c !== commentObj.text : c.id !== commentObj.id;
-        });
-        saveStoredPosts(savedPosts);
-    }
-
-    commentElement.remove();
+    void loadPostsFromSupabase();
 }
 
-function renderCommentItem(commentList, postData, commentData) {
-    const commentObj = typeof commentData === "string"
-        ? { id: "cmt-" + Math.random().toString(16).slice(2), text: commentData, author_id: null, author_name: "Member" }
-        : commentData;
+function renderCommentItem(commentList, postData, commentObj) {
 
     const commentItem = document.createElement("div");
     commentItem.className = "comment-item";
@@ -3166,7 +3135,7 @@ function renderCommentItem(commentList, postData, commentData) {
 
     const textSpan = document.createElement("span");
     textSpan.className = "comment-text";
-    textSpan.textContent = (commentObj.author_name ? commentObj.author_name + ": " : "") + commentObj.text;
+    textSpan.textContent = "Member: " + commentObj.text;
     commentItem.appendChild(textSpan);
 
     const isCommentOwner = currentSessionUser && commentObj.author_id && commentObj.author_id === currentSessionUser.id;
@@ -3298,38 +3267,12 @@ function createPostElement(postData) {
     commentList.className = "comment-list";
 
     if (Array.isArray(postData.comments)) {
-        postData.comments.forEach((commentData) => {
-            renderCommentItem(commentList, postData, commentData);
+        postData.comments.forEach((comment) => {
+            renderCommentItem(commentList, postData, comment);
         });
     }
 
     likeButton.addEventListener("click", () => {
-        const savedPosts = getStoredPosts();
-        const currentPost = savedPosts.find((item) => item.id === postData.id);
-
-        if (currentPost) {
-            const isLiked = currentPost.liked === true;
-            const currentLikes = Number(currentPost.likes || 0);
-
-            if (isLiked) {
-                currentPost.liked = false;
-                currentPost.likes = currentLikes - 1;
-                likeButton.classList.remove("liked");
-                likeButton.setAttribute("aria-pressed", "false");
-            } else {
-                currentPost.liked = true;
-                currentPost.likes = currentLikes + 1;
-                likeButton.classList.add("liked");
-                likeButton.setAttribute("aria-pressed", "true");
-            }
-
-            post.dataset.liked = String(Boolean(currentPost.liked));
-            post.dataset.likes = String(currentPost.likes);
-            likeCount.textContent = String(currentPost.likes);
-            saveStoredPosts(savedPosts);
-            return;
-        }
-
         const isLiked = post.dataset.liked === "true";
         const currentLikes = Number(post.dataset.likes || 0);
 
@@ -3346,13 +3289,6 @@ function createPostElement(postData) {
         }
 
         likeCount.textContent = post.dataset.likes;
-        const allPosts = getStoredPosts();
-        const index = allPosts.findIndex((item) => item.id === postData.id);
-        if (index >= 0) {
-            allPosts[index].liked = post.dataset.liked === "true";
-            allPosts[index].likes = Number(post.dataset.likes || 0);
-            saveStoredPosts(allPosts);
-        }
     });
 
     commentButton.addEventListener("click", () => {
@@ -3371,35 +3307,17 @@ function createPostElement(postData) {
             return;
         }
 
-        const commentObj = {
-            id: "cmt-" + Date.now() + Math.random().toString(16).slice(2),
-            text: commentText,
-            author_id: currentSessionUser ? currentSessionUser.id : null,
-            author_name: currentSessionUser
-                ? (currentSessionUser.user_metadata?.full_name || currentSessionUser.user_metadata?.name || "Member")
-                : "Guest",
-            created_at: new Date().toISOString()
-        };
-
-        // Sync comment to Supabase
-        await syncCommentToSupabase(postData, commentObj);
-
-        // Save to local storage
-        const allPosts = getStoredPosts();
-        const matchingPost = allPosts.find((item) => item.id === postData.id);
-        if (matchingPost) {
-            if (!Array.isArray(matchingPost.comments)) {
-                matchingPost.comments = [];
-            }
-            matchingPost.comments.push(commentObj);
-            saveStoredPosts(allPosts);
+        if (!currentSessionUser) {
+            setProfileAuthState("Sign in to comment.", true);
+            return;
         }
 
-        // Render comment in DOM
-        renderCommentItem(commentList, postData, commentObj);
+        const commentCreated = await syncCommentToSupabase(postData, { text: commentText });
+        if (!commentCreated) return;
 
         commentInput.value = "";
         commentForm.style.display = "none";
+        void loadPostsFromSupabase();
     });
 
     actions.appendChild(likeButton);
@@ -3415,43 +3333,7 @@ function createPostElement(postData) {
     return post;
 }
 
-function loadStoredPosts() {
-    const container = document.querySelector(".profile-posts");
-    if (!container) return;
-
-    const emptyMessage = document.getElementById("empty-post-message");
-    if (emptyMessage) {
-        emptyMessage.remove();
-    }
-
-    const savedPosts = getStoredPosts();
-    savedPosts.forEach((postData) => {
-        const existingPost = container.querySelector(`[data-id="${postData.id}"]`);
-        if (!existingPost) {
-            container.appendChild(createPostElement(postData));
-        }
-    });
-}
-
-function loadMyPosts() {
-    const container = document.querySelector(".my-posts-feed");
-    if (!container) return;
-
-    const emptyMessage = document.getElementById("empty-my-posts-message");
-    if (emptyMessage) {
-        emptyMessage.remove();
-    }
-
-    const savedPosts = getStoredPosts();
-    savedPosts.forEach((postData) => {
-        const existingPost = container.querySelector(`[data-id="${postData.id}"]`);
-        if (!existingPost) {
-            container.appendChild(createPostElement(postData));
-        }
-    });
-}
-
-function createPost() {
+async function createPost() {
     const activeSection = document.querySelector(".content-section.active");
     let textBox = activeSection ? activeSection.querySelector("textarea") : null;
     if (!textBox) {
@@ -3465,28 +3347,20 @@ function createPost() {
         return;
     }
 
+    if (!currentSessionUser) {
+        setProfileAuthState("Sign in to create a post.", true);
+        return;
+    }
+
     const postData = {
-        id: Date.now() + Math.random().toString(16).slice(2),
-        author_id: currentSessionUser ? currentSessionUser.id : null,
-        author_email: currentSessionUser ? currentSessionUser.email : null,
-        author_name: currentSessionUser
-            ? (currentSessionUser.user_metadata?.full_name || currentSessionUser.user_metadata?.name || "Member")
-            : "Your Name",
-        text,
-        likes: 0,
-        liked: false,
-        comments: [],
-        created_at: new Date().toISOString()
+        text
     };
 
-    const savedPosts = getStoredPosts();
-    savedPosts.push(postData);
-    saveStoredPosts(savedPosts);
-
-    void syncPostToSupabase(postData);
+    const insertedPost = await syncPostToSupabase(postData);
+    if (!insertedPost) return;
 
     textBox.value = "";
-    reloadPostFeeds();
+    void loadPostsFromSupabase();
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -3504,6 +3378,5 @@ window.addEventListener("DOMContentLoaded", () => {
     renderSavedMusic();
     renderSavedArt();
     renderSavedBooks();
-    loadStoredPosts();
-    loadMyPosts();
+    void loadPostsFromSupabase();
 });
