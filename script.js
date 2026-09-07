@@ -3028,22 +3028,35 @@ async function syncPostToSupabase(postData) {
     if (!window.coucouSupabase) return;
 
     try {
-        const { data, error: authError } = await window.coucouSupabase.auth.getUser();
-        if (authError || !data.user) {
+        const { data: authData, error: authError } = await window.coucouSupabase.auth.getUser();
+        if (authError || !authData.user) {
             console.warn("[Posts] Supabase post sync skipped: no authenticated user.");
             return;
         }
 
-        const { error } = await window.coucouSupabase
+        const { data: insertedData, error } = await window.coucouSupabase
             .from("posts")
             .insert({
-                author_id: data.user.id,
+                author_id: authData.user.id,
                 client_post_id: postData.id,
                 text: postData.text
-            });
+            })
+            .select("id");
 
         if (error) {
             console.error("[Posts] Supabase post sync failed:", error.message);
+            return;
+        }
+
+        const insertedPost = insertedData && insertedData[0];
+        if (!insertedPost || !insertedPost.id) return;
+
+        postData.database_id = insertedPost.id;
+        const savedPosts = getStoredPosts();
+        const storedPost = savedPosts.find((item) => item.id === postData.id);
+        if (storedPost) {
+            storedPost.database_id = insertedPost.id;
+            saveStoredPosts(savedPosts);
         }
     } catch (error) {
         console.error("[Posts] Supabase post sync failed:", error);
@@ -3060,11 +3073,11 @@ function isUserPostAuthor(postData, user) {
 async function handlePostDelete(postData, postElement) {
     if (!confirm("Are you sure you want to delete this post?")) return;
 
-    if (window.coucouSupabase && currentSessionUser && postData.author_id) {
+    if (window.coucouSupabase && currentSessionUser && postData.database_id) {
         const { error } = await window.coucouSupabase
             .from("posts")
             .delete()
-            .or(`client_post_id.eq.${postData.id},id.eq.${postData.id}`);
+            .eq("id", postData.database_id);
 
         if (error) {
             alert("Could not delete post from database: " + error.message);
