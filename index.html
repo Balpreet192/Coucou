@@ -158,14 +158,15 @@
               <section id="profile" class="content-section">
                      <div class="profile-container">
                             <div class="profile-card">
+                                   <button type="button" class="profile-settings-toggle" id="profile-settings-toggle" aria-label="Open account settings" hidden>⋯</button>
                                    <div class="profile-picture">
                                           <p>Photo</p>
                                    </div>
                                    <h2 id="profile-display-name">Your Name</h2>
                                    <p id="profile-display-handle">@username</p>
-                                   <p>Your bio will go here.</p>
+                                   <p id="profile-bio">Your bio will go here.</p>
                                    <div class="profile-stats">
-                                          <span><strong>0</strong> posts</span>
+                                          <span><strong id="profile-post-count">0</strong> posts</span>
                                           <span><strong>0</strong> Followers</span>
                                           <span><strong>0</strong> Following</span>
                                    </div>
@@ -183,6 +184,24 @@
                                                         <button type="button" class="auth-mode-tab" id="auth-tab-sign-up" data-mode="sign-up" role="tab" aria-selected="false">Create Account</button>
                                                  </div>
                                                  <form class="profile-auth-form" id="profile-auth-form">
+                                                        <div id="auth-sign-up-fields" hidden>
+                                                               <label>
+                                                                      <span>Username</span>
+                                                                      <input type="text" id="profile-auth-username" autocomplete="username" maxlength="30" placeholder="Your public username">
+                                                               </label>
+                                                               <label class="auth-policy-check">
+                                                                      <input type="checkbox" id="auth-age-check">
+                                                                      <span>I confirm that I am 16 years old or older.</span>
+                                                               </label>
+                                                               <label class="auth-policy-check">
+                                                                      <input type="checkbox" id="auth-community-check">
+                                                                      <span>I agree to Coucou's community guidelines.</span>
+                                                               </label>
+                                                               <label class="auth-policy-check">
+                                                                      <input type="checkbox" id="auth-privacy-check">
+                                                                      <span>I accept the Coucou privacy policy.</span>
+                                                               </label>
+                                                        </div>
                                                         <label>
                                                                <span>Email</span>
                                                                <input type="email" id="profile-auth-email" autocomplete="email" required placeholder="you@example.com">
@@ -200,40 +219,23 @@
                                                  </form>
                                           </div>
 
-                                          <!-- Signed In Account View -->
-                                          <div id="auth-signed-in-view" hidden>
-                                                 <div class="account-settings-card">
-                                                        <h4>Account Settings</h4>
-                                                        <p class="account-email-info">Signed in as: <strong id="account-email-display"></strong></p>
-                                                        <div class="account-actions">
-                                                               <button type="button" class="profile-sign-out" id="profile-sign-out">Sign out</button>
-                                                               <button type="button" class="profile-delete-account-btn" id="profile-delete-account-btn">Delete Account</button>
-                                                        </div>
-
-                                                        <!-- Delete Account Confirmation Box -->
-                                                        <div class="delete-account-confirm-box" id="delete-account-confirm-box" hidden>
-                                                               <div class="delete-warning-banner">
-                                                                      ⚠️ <strong>Permanent Account Deletion</strong>
-                                                                      <p>Deleting your account will permanently remove your user credentials, posts, and comments. This action cannot be undone.</p>
-                                                               </div>
-                                                               <label>
-                                                                      <span>To confirm permanent deletion, type your email address (<strong id="confirm-email-target"></strong>):</span>
-                                                                      <input type="email" id="delete-confirm-email-input" placeholder="Type your email to confirm" autocomplete="off">
-                                                               </label>
-                                                               <div class="delete-confirm-actions">
-                                                                      <button type="button" class="btn-cancel-delete" id="cancel-delete-account-btn">Cancel</button>
-                                                                      <button type="button" class="btn-confirm-delete" id="confirm-delete-account-btn" disabled>Permanently Delete Account</button>
-                                                               </div>
-                                                        </div>
-                                                 </div>
+                                          <!-- Username Setup for Existing Accounts -->
+                                          <div class="profile-username-setup" id="profile-username-setup" hidden>
+                                                 <h3>Choose your username</h3>
+                                                 <p>Your username is public. Your email stays private.</p>
+                                                 <label>
+                                                        <span>Username</span>
+                                                        <input type="text" id="profile-username-input" maxlength="30" placeholder="e.g. alex">
+                                                 </label>
+                                                 <button type="button" id="save-username-btn">Save username</button>
                                           </div>
                                    </div>
-                            </div>
 
-                            <div class="create-post-card">
-                                   <h3>Create a Post</h3>
-                                   <textarea id="profile-post-text" placeholder="Share a thought..."></textarea>
-                                   <button onclick="createPost()">Post</button>
+                                   <!-- Profile Settings Menu -->
+                                   <div class="profile-settings-menu" id="profile-settings-menu" hidden>
+                                          <button type="button" id="open-account-settings-btn">Account settings</button>
+                                          <button type="button" id="profile-sign-out">Log out</button>
+                                   </div>
                             </div>
 
                             <div class="collections-card">
@@ -273,6 +275,56 @@
                                    <div class="profile-posts">
                                           <p id="empty-post-message">Your photos and thoughts will appear here.</p>
                                    </div>
+                            </div>
+
+                            <div class="account-settings-card profile-account-settings" id="profile-account-settings" hidden>
+                                   <h3>Account settings</h3>
+                                   <section class="account-settings-section">
+                                          <h4>General / Account</h4>
+                                          <p class="account-email-info">Your email: <strong id="account-email-display"></strong></p>
+                                          <form class="account-settings-form" id="account-profile-form">
+                                                 <label>
+                                                        <span>Username</span>
+                                                        <input type="text" id="settings-username" maxlength="30">
+                                                 </label>
+                                                 <label>
+                                                        <span>Optional bio</span>
+                                                        <textarea id="settings-bio" rows="3" placeholder="Tell people a little about yourself."></textarea>
+                                                 </label>
+                                                 <button type="submit" class="profile-sign-out">Save profile</button>
+                                          </form>
+                                   </section>
+                                   <section class="account-settings-section">
+                                          <h4>Password</h4>
+                                          <form class="account-settings-form" id="account-password-form">
+                                                 <label>
+                                                        <span>New password</span>
+                                                        <div class="password-input-wrap">
+                                                               <input type="password" id="settings-password" autocomplete="new-password" minlength="6" required>
+                                                               <button type="button" class="password-toggle-btn" data-password-toggle="settings-password" aria-label="Toggle new password visibility">👁️</button>
+                                                        </div>
+                                                 </label>
+                                                 <button type="submit" class="profile-sign-out">Change password</button>
+                                          </form>
+                                   </section>
+                                   <section class="account-settings-section account-danger-zone">
+                                          <h4>Danger zone</h4>
+                                          <button type="button" class="profile-delete-account-btn" id="profile-delete-account-btn">Delete Account</button>
+                                          <div class="delete-account-confirm-box" id="delete-account-confirm-box" hidden>
+                                                 <div class="delete-warning-banner">
+                                                        ⚠️ <strong>Permanent Account Deletion</strong>
+                                                        <p>Deleting your account will permanently remove your user credentials, posts, and comments. This action cannot be undone.</p>
+                                                 </div>
+                                                 <label>
+                                                        <span>Type your username (<strong id="confirm-username-target"></strong>) to confirm:</span>
+                                                        <input type="text" id="delete-confirm-username-input" placeholder="Type your username" autocomplete="off">
+                                                 </label>
+                                                 <div class="delete-confirm-actions">
+                                                        <button type="button" class="btn-cancel-delete" id="cancel-delete-account-btn">Cancel</button>
+                                                        <button type="button" class="btn-confirm-delete" id="confirm-delete-account-btn" disabled>Permanently Delete Account</button>
+                                                 </div>
+                                          </div>
+                                   </section>
                             </div>
                      </div>
               </section>

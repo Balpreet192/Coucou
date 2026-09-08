@@ -358,6 +358,152 @@ header p {
       opacity: 0.7;
 }
 
+/* PROFILE SETTINGS MENU */
+.profile-card {
+      position: relative;
+}
+
+.profile-settings-toggle {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 50%;
+      background: #f0f8fd;
+      color: #6b4c5a;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+}
+
+.profile-settings-menu {
+      position: absolute;
+      top: 52px;
+      right: 14px;
+      min-width: 150px;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      background: white;
+      border: 1px solid #d9edf5;
+      border-radius: 12px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      z-index: 5;
+      text-align: left;
+}
+
+.profile-settings-menu button {
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #557080;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-weight: 600;
+      text-align: left;
+}
+
+.profile-settings-menu button:hover {
+      background: #f0f8fd;
+      color: #d7a26d;
+}
+
+.profile-username-setup {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 14px;
+      border-top: 1px solid #d9edf5;
+}
+
+.profile-username-setup h3 {
+      color: #6b4c5a;
+      font-size: 18px;
+}
+
+.profile-username-setup p,
+.profile-username-setup span {
+      font-size: 13px;
+      color: #557080;
+}
+
+.profile-username-setup input,
+.account-settings-form input,
+.account-settings-form textarea {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #cfeaf3;
+      border-radius: 8px;
+      font: inherit;
+}
+
+.profile-username-setup button {
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 12px;
+      background: #d7a26d;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+}
+
+.auth-policy-check {
+      display: flex !important;
+      grid-template-columns: none;
+      align-items: flex-start;
+      gap: 8px;
+      font-weight: 500 !important;
+}
+
+.auth-policy-check input {
+      width: auto !important;
+      margin-top: 2px;
+}
+
+.account-settings-form {
+      display: grid;
+      gap: 10px;
+}
+
+.account-settings-form label {
+      display: grid;
+      gap: 4px;
+      color: #6b4c5a;
+      font-size: 12px;
+      font-weight: 600;
+}
+
+.account-settings-form textarea {
+      resize: vertical;
+}
+
+.profile-account-settings {
+      background-color: white;
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 25px;
+      border-radius: 25px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.account-settings-section {
+      padding-top: 16px;
+      margin-top: 16px;
+      border-top: 1px solid #d9edf5;
+}
+
+.account-settings-section:first-of-type {
+      padding-top: 0;
+      margin-top: 0;
+      border-top: 0;
+}
+
+.account-danger-zone {
+      border-color: #f5c6cb;
+}
+
 .create-post-card {
       background-color: white;
       max-width: 500px;

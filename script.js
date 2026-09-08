@@ -2754,6 +2754,7 @@ function renderMovieDetail(movie) {
 
 let currentSessionUser = null;
 let currentAuthMode = "sign-in";
+let currentProfile = null;
 
 function setProfileAuthState(message, isError) {
     const state = document.getElementById("profile-auth-state");
@@ -2761,6 +2762,17 @@ function setProfileAuthState(message, isError) {
 
     state.textContent = message || "";
     state.classList.toggle("profile-auth-error", Boolean(isError));
+}
+
+function getNormalizedUsername(username) {
+    return (username || "").trim().replace(/^@+/, "");
+}
+
+function getPublicUsername(profile, user) {
+    const username = profile && profile.username ? profile.username : null;
+    if (username) return getNormalizedUsername(username);
+    const metadata = user && user.user_metadata ? user.user_metadata : {};
+    return getNormalizedUsername(metadata.username || "user");
 }
 
 function renderPosts(posts) {
@@ -2785,68 +2797,162 @@ async function loadPostsFromSupabase() {
         return;
     }
 
-    const { data, error } = await window.coucouSupabase
+    let query = await window.coucouSupabase
         .from("posts")
-        .select("id, author_id, text, created_at, comments(id, post_id, author_id, text, created_at)")
+        .select(`
+            id,
+            author_id,
+            text,
+            created_at,
+            author:profiles!posts_author_id_fkey(username),
+            comments(id, post_id, author_id, text, created_at, commenter:profiles!comments_author_id_fkey(username))
+        `)
         .order("created_at", { ascending: false });
 
-    if (error) {
-        console.error("[Posts] Supabase post load failed:", error.message);
+    if (query.error && /profiles|relationship/i.test(query.error.message || "")) {
+        query = await window.coucouSupabase
+            .from("posts")
+            .select("id, author_id, text, created_at, comments(id, post_id, author_id, text, created_at)")
+            .order("created_at", { ascending: false });
+    }
+
+    if (query.error) {
+        console.error("[Posts] Supabase post load failed:", query.error.message);
         renderPosts([]);
         return;
     }
 
-    renderPosts(data || []);
+    const posts = query.data || [];
+    renderPosts(posts);
+    const postCount = document.getElementById("profile-post-count");
+    if (postCount && currentSessionUser) {
+        postCount.textContent = String(posts.filter((post) => post.author_id === currentSessionUser.id).length);
+    } else if (postCount) {
+        postCount.textContent = "0";
+    }
 }
 
-function updateProfileAuthUi(user) {
+async function loadUserProfile(user) {
+    if (!user || !window.coucouSupabase) return null;
+
+    const { data, error } = await window.coucouSupabase
+        .from("profiles")
+        .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("[Profile] Profile load failed:", error.message);
+        return null;
+    }
+
+    return data;
+}
+
+function updateProfileAuthUi(user, profile) {
     currentSessionUser = user || null;
+    currentProfile = profile || null;
 
     const name = document.getElementById("profile-display-name");
     const handle = document.getElementById("profile-display-handle");
+    const bio = document.getElementById("profile-bio");
     const signedOutView = document.getElementById("auth-signed-out-view");
-    const signedInView = document.getElementById("auth-signed-in-view");
+    const usernameSetup = document.getElementById("profile-username-setup");
+    const settingsToggle = document.getElementById("profile-settings-toggle");
+    const settingsMenu = document.getElementById("profile-settings-menu");
+    const accountSettings = document.getElementById("profile-account-settings");
     const accountEmailDisplay = document.getElementById("account-email-display");
-    const confirmEmailTarget = document.getElementById("confirm-email-target");
-
-    // Reset account deletion confirm box
-    const confirmBox = document.getElementById("delete-account-confirm-box");
-    const confirmInput = document.getElementById("delete-confirm-email-input");
+    const settingsUsername = document.getElementById("settings-username");
+    const settingsBio = document.getElementById("settings-bio");
+    const confirmUsernameTarget = document.getElementById("confirm-username-target");
+    const confirmUsernameInput = document.getElementById("delete-confirm-username-input");
     const confirmBtn = document.getElementById("confirm-delete-account-btn");
+    const confirmBox = document.getElementById("delete-account-confirm-box");
+
+    if (settingsMenu) settingsMenu.hidden = true;
+    if (accountSettings) accountSettings.hidden = true;
     if (confirmBox) confirmBox.hidden = true;
-    if (confirmInput) confirmInput.value = "";
+    if (confirmUsernameInput) confirmUsernameInput.value = "";
     if (confirmBtn) confirmBtn.disabled = true;
 
-    if (user) {
-        const metadata = user.user_metadata || {};
-        const displayName = metadata.full_name || metadata.name || "Member";
-        const userHandle = "@" + (metadata.username || (user.email ? user.email.split("@")[0] : "username"));
-
-        if (name) name.textContent = displayName;
-        if (handle) handle.textContent = userHandle;
-        if (accountEmailDisplay) accountEmailDisplay.textContent = user.email || "";
-        if (confirmEmailTarget) confirmEmailTarget.textContent = user.email || "";
-
-        if (signedOutView) signedOutView.hidden = true;
-        if (signedInView) signedInView.hidden = false;
-        setProfileAuthState("Signed in.");
-    } else {
+    if (!user) {
         if (name) name.textContent = "Your Name";
         if (handle) handle.textContent = "@username";
+        if (bio) bio.textContent = "Your bio will go here.";
         if (accountEmailDisplay) accountEmailDisplay.textContent = "";
-        if (confirmEmailTarget) confirmEmailTarget.textContent = "";
-
+        if (settingsUsername) settingsUsername.value = "";
+        if (settingsBio) settingsBio.value = "";
         if (signedOutView) signedOutView.hidden = false;
-        if (signedInView) signedInView.hidden = true;
+        if (usernameSetup) usernameSetup.hidden = true;
+        if (settingsToggle) settingsToggle.hidden = true;
         setProfileAuthState("");
+        void loadPostsFromSupabase();
+        return;
     }
 
+    const metadata = user.user_metadata || {};
+    const username = getPublicUsername(profile, user);
+    const displayName = username || metadata.full_name || metadata.name || "User";
+
+    if (name) name.textContent = displayName;
+    if (handle) handle.textContent = "@" + username;
+    if (bio) bio.textContent = profile && profile.bio ? profile.bio : "Your bio will go here.";
+    if (accountEmailDisplay) accountEmailDisplay.textContent = user.email || "";
+    if (settingsUsername) settingsUsername.value = username || "";
+    if (settingsBio) settingsBio.value = profile && profile.bio ? profile.bio : "";
+    if (confirmUsernameTarget) confirmUsernameTarget.textContent = username || "";
+    if (signedOutView) signedOutView.hidden = true;
+    if (settingsToggle) settingsToggle.hidden = false;
+    if (usernameSetup) usernameSetup.hidden = Boolean(profile && profile.username);
+
+    setProfileAuthState(profile && profile.username ? "Signed in." : "Choose a username to finish your profile.");
     void loadPostsFromSupabase();
+}
+
+async function saveUserProfile(username, bio) {
+    if (!currentSessionUser || !window.coucouSupabase) return null;
+
+    const normalizedUsername = getNormalizedUsername(username);
+    if (!normalizedUsername) {
+        setProfileAuthState("Username is required.", true);
+        return null;
+    }
+
+    if (!/^[A-Za-z0-9_]{3,30}$/.test(normalizedUsername)) {
+        setProfileAuthState("Username must be 3–30 letters, numbers, or underscores.", true);
+        return null;
+    }
+
+    const { data, error } = await window.coucouSupabase
+        .from("profiles")
+        .upsert({
+            id: currentSessionUser.id,
+            username: normalizedUsername,
+            bio: bio || null,
+            age_confirmed: true,
+            guidelines_accepted: true,
+            privacy_accepted: true,
+            updated_at: new Date().toISOString()
+        })
+        .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
+        .single();
+
+    if (error) {
+        setProfileAuthState(error.code === "23505" ? "That username is already taken." : error.message, true);
+        return null;
+    }
+
+    updateProfileAuthUi(currentSessionUser, data);
+    return data;
 }
 
 async function submitProfileAuth(action) {
     const emailInput = document.getElementById("profile-auth-email");
     const passwordInput = document.getElementById("profile-auth-password");
+    const usernameInput = document.getElementById("profile-auth-username");
+    const ageCheck = document.getElementById("auth-age-check");
+    const communityCheck = document.getElementById("auth-community-check");
+    const privacyCheck = document.getElementById("auth-privacy-check");
     if (!emailInput || !passwordInput || !window.coucouSupabase) return;
 
     const email = emailInput.value.trim();
@@ -2865,6 +2971,20 @@ async function submitProfileAuth(action) {
     }
 
     const signUp = action === "sign-up";
+    let username = "";
+
+    if (signUp) {
+        username = getNormalizedUsername(usernameInput && usernameInput.value);
+        if (!username || !/^[A-Za-z0-9_]{3,30}$/.test(username)) {
+            setProfileAuthState("Choose a public username with 3–30 letters, numbers, or underscores.", true);
+            return;
+        }
+        if (!ageCheck.checked || !communityCheck.checked || !privacyCheck.checked) {
+            setProfileAuthState("Please confirm your age and accept the guidelines and privacy policy.", true);
+            return;
+        }
+    }
+
     setProfileAuthState(signUp ? "Creating account..." : "Signing in...");
 
     try {
@@ -2872,7 +2992,15 @@ async function submitProfileAuth(action) {
             ? await window.coucouSupabase.auth.signUp({
                   email,
                   password,
-                  options: { emailRedirectTo: "https://balpreet192.github.io/Coucou/" }
+                  options: {
+                      emailRedirectTo: "https://balpreet192.github.io/Coucou/",
+                      data: {
+                          username,
+                          age_confirmed: true,
+                          guidelines_accepted: true,
+                          privacy_accepted: true
+                      }
+                  }
               })
             : await window.coucouSupabase.auth.signInWithPassword({ email, password });
 
@@ -2881,9 +3009,14 @@ async function submitProfileAuth(action) {
             return;
         }
 
+        if (signUp && result.data.user) {
+            const profile = await saveUserProfile(username, "");
+            if (!profile && result.data.session) return;
+        }
+
         passwordInput.value = "";
         if (signUp && !result.data.session) {
-            setProfileAuthState("Account created! Check your email to confirm registration.");
+            setProfileAuthState("Account created. Check your email, sign in, then finish your username.");
         }
     } catch (error) {
         setProfileAuthState("Unable to complete authentication. Please try again.", true);
@@ -2898,45 +3031,72 @@ function initProfileAuth() {
     const tabSignIn = document.getElementById("auth-tab-sign-in");
     const tabSignUp = document.getElementById("auth-tab-sign-up");
     const submitBtn = document.getElementById("auth-submit-btn");
-
+    const signupFields = document.getElementById("auth-sign-up-fields");
+    const settingsToggle = document.getElementById("profile-settings-toggle");
+    const settingsMenu = document.getElementById("profile-settings-menu");
+    const openSettingsButton = document.getElementById("open-account-settings-btn");
+    const accountSettings = document.getElementById("profile-account-settings");
+    const usernameSetupButton = document.getElementById("save-username-btn");
+    const profileForm = document.getElementById("account-profile-form");
+    const passwordForm = document.getElementById("account-password-form");
     const deleteAccountBtn = document.getElementById("profile-delete-account-btn");
     const cancelDeleteBtn = document.getElementById("cancel-delete-account-btn");
     const confirmDeleteBtn = document.getElementById("confirm-delete-account-btn");
-    const confirmEmailInput = document.getElementById("delete-confirm-email-input");
+    const confirmUsernameInput = document.getElementById("delete-confirm-username-input");
     const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
 
     if (!form || !signOutButton) return;
 
-    // Mode tabs switching
-    if (tabSignIn && tabSignUp && submitBtn) {
-        tabSignIn.addEventListener("click", () => {
-            currentAuthMode = "sign-in";
-            tabSignIn.classList.add("active");
-            tabSignUp.classList.remove("active");
-            tabSignIn.setAttribute("aria-selected", "true");
-            tabSignUp.setAttribute("aria-selected", "false");
-            submitBtn.textContent = "Sign in";
-        });
+    const setAuthMode = (mode) => {
+        currentAuthMode = mode;
+        const signUpMode = mode === "sign-up";
+        if (signupFields) signupFields.hidden = !signUpMode;
+        if (tabSignIn) tabSignIn.classList.toggle("active", !signUpMode);
+        if (tabSignUp) tabSignUp.classList.toggle("active", signUpMode);
+        if (submitBtn) submitBtn.textContent = signUpMode ? "Create account" : "Sign in";
+    };
 
-        tabSignUp.addEventListener("click", () => {
-            currentAuthMode = "sign-up";
-            tabSignUp.classList.add("active");
-            tabSignIn.classList.remove("active");
-            tabSignUp.setAttribute("aria-selected", "true");
-            tabSignIn.setAttribute("aria-selected", "false");
-            submitBtn.textContent = "Create account";
-        });
-    }
+    if (tabSignIn) tabSignIn.addEventListener("click", () => setAuthMode("sign-in"));
+    if (tabSignUp) tabSignUp.addEventListener("click", () => setAuthMode("sign-up"));
+    setAuthMode(currentAuthMode);
 
-    // Password visibility toggle
     if (togglePassBtn) {
         togglePassBtn.addEventListener("click", () => {
             const passInput = document.getElementById("profile-auth-password");
-            if (passInput) {
-                const isPass = passInput.type === "password";
-                passInput.type = isPass ? "text" : "password";
-                togglePassBtn.textContent = isPass ? "🙈" : "👁️";
+            if (!passInput) return;
+            const isPassword = passInput.type === "password";
+            passInput.type = isPassword ? "text" : "password";
+            togglePassBtn.textContent = isPassword ? "🙈" : "👁️";
+        });
+    }
+
+    document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const input = document.getElementById(button.dataset.passwordToggle);
+            if (!input) return;
+            const isPassword = input.type === "password";
+            input.type = isPassword ? "text" : "password";
+            button.textContent = isPassword ? "🙈" : "👁️";
+        });
+    });
+
+    if (settingsToggle && settingsMenu) {
+        settingsToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            settingsMenu.hidden = !settingsMenu.hidden;
+        });
+        document.addEventListener("click", (event) => {
+            if (!settingsMenu.hidden && !settingsMenu.contains(event.target) && event.target !== settingsToggle) {
+                settingsMenu.hidden = true;
             }
+        });
+    }
+
+    if (openSettingsButton && accountSettings && settingsMenu) {
+        openSettingsButton.addEventListener("click", () => {
+            settingsMenu.hidden = true;
+            accountSettings.hidden = false;
+            accountSettings.scrollIntoView({ behavior: "smooth", block: "start" });
         });
     }
 
@@ -2956,7 +3116,42 @@ function initProfileAuth() {
         if (error) setProfileAuthState(error.message, true);
     });
 
-    // Account deletion UI handlers
+    if (usernameSetupButton) {
+        usernameSetupButton.addEventListener("click", async () => {
+            const usernameInput = document.getElementById("profile-username-input");
+            await saveUserProfile(usernameInput ? usernameInput.value : "", "");
+        });
+    }
+
+    if (profileForm) {
+        profileForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const usernameInput = document.getElementById("settings-username");
+            const bioInput = document.getElementById("settings-bio");
+            const profile = await saveUserProfile(usernameInput ? usernameInput.value : "", bioInput ? bioInput.value : "");
+            if (profile) setProfileAuthState("Profile saved.");
+        });
+    }
+
+    if (passwordForm) {
+        passwordForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const passwordInput = document.getElementById("settings-password");
+            const newPassword = passwordInput ? passwordInput.value : "";
+            if (newPassword.length < 6) {
+                setProfileAuthState("Password must be at least 6 characters.", true);
+                return;
+            }
+            const { error } = await window.coucouSupabase.auth.updateUser({ password: newPassword });
+            if (error) {
+                setProfileAuthState(error.message, true);
+                return;
+            }
+            if (passwordInput) passwordInput.value = "";
+            setProfileAuthState("Password updated.");
+        });
+    }
+
     if (deleteAccountBtn && deleteConfirmBox) {
         deleteAccountBtn.addEventListener("click", () => {
             deleteConfirmBox.hidden = false;
@@ -2966,16 +3161,16 @@ function initProfileAuth() {
     if (cancelDeleteBtn && deleteConfirmBox) {
         cancelDeleteBtn.addEventListener("click", () => {
             deleteConfirmBox.hidden = true;
-            if (confirmEmailInput) confirmEmailInput.value = "";
+            if (confirmUsernameInput) confirmUsernameInput.value = "";
             if (confirmDeleteBtn) confirmDeleteBtn.disabled = true;
         });
     }
 
-    if (confirmEmailInput && confirmDeleteBtn) {
-        confirmEmailInput.addEventListener("input", () => {
-            const userEmail = currentSessionUser ? (currentSessionUser.email || "").trim().toLowerCase() : "";
-            const entered = confirmEmailInput.value.trim().toLowerCase();
-            confirmDeleteBtn.disabled = !(userEmail && entered === userEmail);
+    if (confirmUsernameInput && confirmDeleteBtn) {
+        confirmUsernameInput.addEventListener("input", () => {
+            const expected = getNormalizedUsername(currentProfile && currentProfile.username).toLowerCase();
+            const entered = getNormalizedUsername(confirmUsernameInput.value).toLowerCase();
+            confirmDeleteBtn.disabled = !(expected && entered === expected);
         });
     }
 
@@ -3006,7 +3201,7 @@ function initProfileAuth() {
 
                 if (deleteSuccess) {
                     await window.coucouSupabase.auth.signOut();
-                    updateProfileAuthUi(null);
+                    updateProfileAuthUi(null, null);
                     setProfileAuthState("Your account has been permanently deleted.");
                 }
             } catch (err) {
@@ -3018,12 +3213,14 @@ function initProfileAuth() {
     }
 
     window.coucouSupabase.auth.getSession()
-        .then(({ data, error }) => {
+        .then(async ({ data, error }) => {
             if (error) {
                 setProfileAuthState(error.message, true);
                 return;
             }
-            updateProfileAuthUi(data.session && data.session.user);
+            const user = data.session && data.session.user;
+            const profile = user ? await loadUserProfile(user) : null;
+            updateProfileAuthUi(user, profile);
         })
         .catch((error) => {
             setProfileAuthState("Unable to check authentication status.", true);
@@ -3031,7 +3228,11 @@ function initProfileAuth() {
         });
 
     window.coucouSupabase.auth.onAuthStateChange((_event, session) => {
-        updateProfileAuthUi(session && session.user);
+        void (async () => {
+            const user = session && session.user;
+            const profile = user ? await loadUserProfile(user) : null;
+            updateProfileAuthUi(user, profile);
+        })();
     });
 }
 
@@ -3135,14 +3336,14 @@ function renderCommentItem(commentList, postData, commentObj) {
 
     const textSpan = document.createElement("span");
     textSpan.className = "comment-text";
-    textSpan.textContent = "Member: " + commentObj.text;
+    const commenterUsername = commentObj.commenter && commentObj.commenter.username
+        ? getNormalizedUsername(commentObj.commenter.username)
+        : "user";
+    textSpan.textContent = "@" + commenterUsername + ": " + commentObj.text;
     commentItem.appendChild(textSpan);
 
     const isCommentOwner = currentSessionUser && commentObj.author_id && commentObj.author_id === currentSessionUser.id;
-    const isPostOwner = currentSessionUser && (
-        (postData.author_id && postData.author_id === currentSessionUser.id) ||
-        isUserPostAuthor(postData, currentSessionUser)
-    );
+    const isPostOwner = currentSessionUser && postData.author_id && postData.author_id === currentSessionUser.id;
 
     if (isCommentOwner || isPostOwner) {
         const deleteCommentBtn = document.createElement("button");
@@ -3170,7 +3371,10 @@ function createPostElement(postData) {
     header.className = "post-header";
 
     const name = document.createElement("strong");
-    name.textContent = postData.author_name || "Your Name";
+    const postUsername = postData.author && postData.author.username
+        ? getNormalizedUsername(postData.author.username)
+        : "user";
+    name.textContent = "@" + postUsername;
 
     const time = document.createElement("span");
     time.textContent = " • Just now";
