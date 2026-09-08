@@ -2849,6 +2849,40 @@ async function loadUserProfile(user) {
     return data;
 }
 
+// Auto-creates the profile row from signup metadata on first real session, so
+// the user never has to type their username a second time after confirming email.
+async function ensureProfileForUser(user) {
+    if (!user || !window.coucouSupabase) return null;
+
+    const profile = await loadUserProfile(user);
+    if (profile && profile.username) return profile;
+
+    const metadataUsername = getNormalizedUsername(user.user_metadata && user.user_metadata.username);
+    if (!metadataUsername || !/^[A-Za-z0-9_]{3,30}$/.test(metadataUsername)) {
+        return profile;
+    }
+
+    const { data, error } = await window.coucouSupabase
+        .from("profiles")
+        .upsert({
+            id: user.id,
+            username: metadataUsername,
+            age_confirmed: true,
+            guidelines_accepted: true,
+            privacy_accepted: true,
+            updated_at: new Date().toISOString()
+        })
+        .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
+        .single();
+
+    if (error) {
+        console.warn("[Profile] Auto-provision from signup metadata failed:", error.message);
+        return profile;
+    }
+
+    return data;
+}
+
 function updateProfileAuthUi(user, profile) {
     currentSessionUser = user || null;
     currentProfile = profile || null;
@@ -3009,14 +3043,13 @@ async function submitProfileAuth(action) {
             return;
         }
 
-        if (signUp && result.data.user) {
-            const profile = await saveUserProfile(username, "");
-            if (!profile && result.data.session) return;
-        }
-
         passwordInput.value = "";
-        if (signUp && !result.data.session) {
-            setProfileAuthState("Account created. Check your email, sign in, then finish your username.");
+        if (signUp) {
+            setProfileAuthState(
+                result.data.session
+                    ? "Account created! Setting up your profile..."
+                    : "Account created. Check your email to confirm, then sign in."
+            );
         }
     } catch (error) {
         setProfileAuthState("Unable to complete authentication. Please try again.", true);
@@ -3219,7 +3252,7 @@ function initProfileAuth() {
                 return;
             }
             const user = data.session && data.session.user;
-            const profile = user ? await loadUserProfile(user) : null;
+            const profile = user ? await ensureProfileForUser(user) : null;
             updateProfileAuthUi(user, profile);
         })
         .catch((error) => {
@@ -3230,7 +3263,7 @@ function initProfileAuth() {
     window.coucouSupabase.auth.onAuthStateChange((_event, session) => {
         void (async () => {
             const user = session && session.user;
-            const profile = user ? await loadUserProfile(user) : null;
+            const profile = user ? await ensureProfileForUser(user) : null;
             updateProfileAuthUi(user, profile);
         })();
     });

@@ -307,9 +307,12 @@ header p {
       background-color: #fff5f5;
       border: 1px solid #f5c6cb;
       border-radius: 12px;
+      gap: 12px;
+}
+
+.delete-account-confirm-box:not([hidden]) {
       display: flex;
       flex-direction: column;
-      gap: 12px;
 }
 
 .delete-warning-banner {
@@ -383,8 +386,8 @@ header p {
       top: 52px;
       right: 14px;
       min-width: 150px;
+      max-width: calc(100% - 28px);
       padding: 8px;
-      display: grid;
       gap: 6px;
       background: white;
       border: 1px solid #d9edf5;
@@ -392,6 +395,10 @@ header p {
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
       z-index: 5;
       text-align: left;
+}
+
+.profile-settings-menu:not([hidden]) {
+      display: grid;
 }
 
 .profile-settings-menu button {
@@ -411,11 +418,14 @@ header p {
 }
 
 .profile-username-setup {
-      display: grid;
       gap: 10px;
       margin-top: 12px;
       padding-top: 14px;
       border-top: 1px solid #d9edf5;
+}
+
+.profile-username-setup:not([hidden]) {
+      display: grid;
 }
 
 .profile-username-setup h3 {
