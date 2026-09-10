@@ -2836,7 +2836,7 @@ async function loadUserProfile(user) {
     if (!user || !window.coucouSupabase) return null;
 
     const { data, error } = await window.coucouSupabase
-        .from("profiles")
+        .from("profile")
         .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
         .eq("id", user.id)
         .maybeSingle();
@@ -2863,7 +2863,7 @@ async function ensureProfileForUser(user) {
     }
 
     const { data, error } = await window.coucouSupabase
-        .from("profiles")
+        .from("profile")
         .upsert({
             id: user.id,
             username: metadataUsername,
@@ -2958,7 +2958,7 @@ async function saveUserProfile(username, bio) {
     }
 
     const { data, error } = await window.coucouSupabase
-        .from("profiles")
+        .from("profile")
         .upsert({
             id: currentSessionUser.id,
             username: normalizedUsername,
