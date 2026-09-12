@@ -3221,21 +3221,20 @@ function initProfileAuth() {
                 if (!rpcError) {
                     deleteSuccess = true;
                 } else {
-                    const { error: fnError } = await window.coucouSupabase.functions.invoke("delete-account");
+                    const { error: fnError } = await window.coucousupabase.functions.invoke("delete-account");
                     if (!fnError) {
                         deleteSuccess = true;
                     } else {
-                        setProfileAuthState("Account deletion failed: " + rpcError.message, true);
-                        console.error("[Account Delete] Deletion failed:", rpcError, fnError);
+                        setProfileAuthState("Account deletion failed: " + fnError.message, true);
+                        console.error("[Account delete] Deletion failed:", fnError);
                         confirmDeleteBtn.disabled = false;
                         return;
                     }
-                }
 
-                if (deleteSuccess) {
-                    await window.coucouSupabase.auth.signOut();
-                    updateProfileAuthUi(null, null);
-                    setProfileAuthState("Your account has been permanently deleted.");
+                    if (deleteSuccess) {
+                        await window.coucousupabase.auth.signOut();
+                        updateProfileAuthState("Your account has been permanently deleted.");
+                    }
                 }
             } catch (err) {
                 setProfileAuthState("Account deletion failed: " + (err.message || err), true);
