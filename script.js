@@ -3250,8 +3250,8 @@ function initProfileAuth() {
             } 
             });
         }
-    });
-}
+    
+
      
 
     if (confirmDeleteBtn) {
