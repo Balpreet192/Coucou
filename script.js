@@ -3186,26 +3186,73 @@ function initProfileAuth() {
     }
 
     if (deleteAccountBtn && deleteConfirmBox) {
-        deleteAccountBtn.addEventListener("click", () => {
+        deleteAccountBtn.addEventListener("click",() => {
             deleteConfirmBox.hidden = false;
+            if (confirmUsernameInput) {
+                confirmUsernameInput.value = "";
+                confirmUsernameInput.focus();
+            } 
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.disabled = true;
+            }
         });
     }
-
-    if (cancelDeleteBtn && deleteConfirmBox) {
+     if (canceldeletBtn && deleteConfirmBox) {
         cancelDeleteBtn.addEventListener("click", () => {
             deleteConfirmBox.hidden = true;
-            if (confirmUsernameInput) confirmUsernameInput.value = "";
-            if (confirmDeleteBtn) confirmDeleteBtn.disabled = true;
+            if (confirmUsernameInput) {
+                confirmUsernameInput.value = "";
+            }
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.disabled = true;
+            }
+        });
+     }
+     if (confirmUsernameInput && confirmDeleteBtn) {
+        confirmUsernameInput.addEventListener("input", async () => {
+            const enteredEmail = confirmUsernameInput.value.trim().toLowerCase();
+            const { data: { user } } = await window.coucousupabase.auth.getUser();
+            const expectedEmail = user?.email?.trim().toLowerCase() || "";
+            confirmdeleteBtn.disabled = !( 
+                expectedEmail &&
+                enteredEmail ===
+                expectedEmail
+            );
         });
     }
-
-    if (confirmUsernameInput && confirmDeleteBtn) {
-        confirmUsernameInput.addEventListener("input", () => {
-            const expected = getNormalizedUsername(currentProfile && currentProfile.username).toLowerCase();
-            const entered = getNormalizedUsername(confirmUsernameInput.value).toLowerCase();
-            confirmDeleteBtn.disabled = !(expected && entered === expected);
-        });
-    }
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener("click", async () => {
+            confirmDeleteBtn.disabled = true;
+            const { 
+                data: { user }
+            } = await 
+            window.coucousupabase.auth.getUser();
+            const enteredEmail = confirmUsernameInput?.value.trim().toLoweCase || "";
+            const expectedEmail = user?.email?.trim().toLowerCase() || "";
+            if (!user || !expectedEmail || enteredEmail !== expectedEmail) {
+                setProfileAuthState("Please enter your account email correctly.", true);
+                confirmDeleteBtn.disabled = false;
+                return;
+            }
+            let deleteSuccess = false;
+            const { error: fnError } = await window.coucousupabase.functions.invoke("delete-account");
+            if (!fnError) {
+                deleteSuccess = true;
+            } else {
+                setProfileAuthState("Account deletion failed: " + fnError.message, true);
+                console.error("[Account delete] Deletion failed:", fnError);
+                confirmDeleteBtn.disabled = false;
+                return;
+            }
+            if (deleteSuccess) { await window.coucousupabase.auth.signOut();
+                deleteConfirmBox.hidden = true;
+                updateProfileAuthState("Your account has been permanently deleted.");
+            } 
+            });
+        }
+    });
+}
+     
 
     if (confirmDeleteBtn) {
         confirmDeleteBtn.addEventListener("click", async () => {
