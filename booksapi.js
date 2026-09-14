@@ -46,14 +46,19 @@ const BooksAPI = (() => {
         const cached = getCached(key);
         if (cached) return cached;
 
-        const response = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-        }
+        try {
+            const response = await fetch(url, { headers: { Accept: "application/json" } });
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
 
-        const data = await response.json();
-        setCached(key, data);
-        return data;
+            const data = await response.json();
+            setCached(key, data);
+            return data;
+        } catch (error) {
+            console.error(`Failed to fetch ${url}:`, error);
+            throw error;
+        }
     }
 
     function buildSearchUrl(params) {
