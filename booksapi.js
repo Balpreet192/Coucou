@@ -56,8 +56,8 @@ const BooksAPI = (() => {
             setCached(key, data);
             return data;
         } catch (error) {
-            console.error(`Failed to fetch ${url}:`, error);
-            throw error;
+            console.warn("[Books API] Fetch failed or timed out:", url);
+            return null;
         }
     }
 
