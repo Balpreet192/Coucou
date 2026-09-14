@@ -3197,7 +3197,7 @@ function initProfileAuth() {
             }
         });
     }
-     if (canceldeletBtn && deleteConfirmBox) {
+     if (cancelDeleteBtn && deleteConfirmBox) {
         cancelDeleteBtn.addEventListener("click", () => {
             deleteConfirmBox.hidden = true;
             if (confirmUsernameInput) {
@@ -3213,7 +3213,7 @@ function initProfileAuth() {
             const enteredEmail = confirmUsernameInput.value.trim().toLowerCase();
             const { data: { user } } = await window.coucousupabase.auth.getUser();
             const expectedEmail = user?.email?.trim().toLowerCase() || "";
-            confirmdeleteBtn.disabled = !( 
+            confirmDeleteBtn.disabled = !( 
                 expectedEmail &&
                 enteredEmail ===
                 expectedEmail
@@ -3226,8 +3226,8 @@ function initProfileAuth() {
             const { 
                 data: { user }
             } = await 
-            window.coucousupabase.auth.getUser();
-            const enteredEmail = confirmUsernameInput?.value.trim().toLoweCase || "";
+            window.coucouSupabase.auth.getUser();
+            const enteredEmail = confirmUsernameInput?.value.trim().toLowerCase() || "";
             const expectedEmail = user?.email?.trim().toLowerCase() || "";
             if (!user || !expectedEmail || enteredEmail !== expectedEmail) {
                 setProfileAuthState("Please enter your account email correctly.", true);
