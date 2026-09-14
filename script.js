@@ -461,6 +461,7 @@ const FEATURED_ARTIST_MBIDS = [
 let featuredArtistsCache = null;
 
 async function loadFeaturedMusic() {
+    try {
     const musicGrid = document.getElementById("music-grid");
     if (!musicGrid) return;
 
@@ -490,6 +491,10 @@ async function loadFeaturedMusic() {
     featuredArtistsCache = artists;
     setMusicState(null);
     renderMusicResults(artists);
+    } catch (error) {
+        console.warn("[MusicBrainz] Featured music fetch failed:", error.message);
+        setMusicState("error", `Couldn't load featured artists from MusicBrainz. Please try again in a moment.`);
+    }
 }
 
 // Genres used to browse a long, ever-changing stream of real MusicBrainz
