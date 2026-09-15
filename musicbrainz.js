@@ -62,14 +62,18 @@ const MusicBrainzAPI = (() => {
         });
 
         return requestQueue.then(() =>
-            fetch(url, {
-                headers: {
-                    Accept: "application/json",
-                    "User-Agent": USER_AGENT
-                }
-            })
-        );
-    }
+            fetch(url)
+              .then(res => {
+                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                return res.json();
+              })
+                .catch(err => {
+                    console.warn("MusicBrainz request failed:", err.message);
+                    return null;
+                })
+            );
+        });
+    
 
     async function fetchJson(url) {
         const cached = getCached(url);
