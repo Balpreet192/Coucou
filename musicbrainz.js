@@ -12,7 +12,6 @@ const MusicBrainzAPI = (() => {
     // MusicBrainz asks API consumers to identify themselves with a contact point.
     // Note: browsers forbid scripts from setting the "User-Agent" header, so this
     // is sent on a best-effort basis; it is not required for anonymous metadata reads.
-    const USER_AGENT = "Coucou/1.0 (preetkaurbal2130@gmail.com)";
     const MIN_REQUEST_GAP_MS = 1100; // stay under MusicBrainz's ~1 request/second limit
     const CACHE_KEY = "coucouMusicBrainzCache";
     const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -72,20 +71,15 @@ const MusicBrainzAPI = (() => {
                     return null;
                 })
             );
-        });
+    }
     
 
     async function fetchJson(url) {
         const cached = getCached(url);
         if (cached) return cached;
 
-        const response = await throttledFetch(url);
-        if (!response.ok) {
-            throw new Error(`MusicBrainz request failed with status ${response.status}`);
-        }
-
-        const data = await response.json();
-        setCached(url, data);
+        const data = await throttledFetch(url);
+        if (data) setCached(url, data);
         return data;
     }
 
