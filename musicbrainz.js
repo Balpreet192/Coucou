@@ -56,19 +56,16 @@ const MusicBrainzAPI = (() => {
             const elapsed = Date.now() - lastRequestTime;
             if (elapsed < MIN_REQUEST_GAP_MS) {
                 await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_GAP_MS - elapsed));
-            }
-            lastRequestTime = Date.now();
+}
+lastRequestTime = Date.now();
         });
 
-        // Append standard format param to avoid 503s from unformatted endpoints
-        const requestUrl = url.includes(' fmt=json') ? url : `${url}${url.includes('?') ? '&' : '?'}fmt=json`;
+        const requestUrl = url.includes('fmt=json') ? url : `${url}${url.includes('?') ? '&' : '?'}fmt=json`;
 
-        return requestQueue.then(() => fetch(requestUrl, { headers: {
-            'Accept': 'application/json'
-        }
-    })
+        return requestQueue.then(() =>
+            fetch(requestUrl)
         .then((res) => {
-            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            if (!res.ok) throw new  Error(`HTTP error ${res.status}`);
             return res.json();
         })
         .catch((err) => {
@@ -77,8 +74,6 @@ const MusicBrainzAPI = (() => {
         })
     );
 }
-    
-
     async function fetchJson(url) {
         const cached = getCached(url);
         if (cached) return cached;
