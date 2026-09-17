@@ -56,26 +56,24 @@ const MusicBrainzAPI = (() => {
             const elapsed = Date.now() - lastRequestTime;
             if (elapsed < MIN_REQUEST_GAP_MS) {
                 await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_GAP_MS - elapsed));
-}
-lastRequestTime = Date.now();
+            }
+              lastRequestTime = Date.now();
         });
-
-        // Safely parse URL and append fmt=json 
-        const parsedUrl = new URL(url);
-        parsedUrl.searchParams.set('fmt', 'json');
-
-        return requestQueue.then(() =>
-            fetch(parsedUrl.toString())
-                .then((res) => {
-                    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-                    return res.json();
-                })
-                .catch((err) => {
-                    console.warn("MusicBrainz request failed:", err.message);
-                    return null;
-                })
-            );
-        }
+        
+        const requestUrl = url.includes('fmt=json') ? url : `${url}${url.includes('?') ? '&' : '?'}fmt=json`;
+        
+        return requestQueue.then(() => 
+            fetch(requestUrl) 
+              .then((res) => {
+                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                return res.json();
+        })
+        .catch((err) => {
+            console.warn("MusicBrainz request failed:", err.message);
+            return null;
+        })
+    );
+}
     async function fetchJson(url) {
         const cached = getCached(url);
         if (cached) return cached;
