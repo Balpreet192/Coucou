@@ -60,20 +60,22 @@ const MusicBrainzAPI = (() => {
 lastRequestTime = Date.now();
         });
 
-        const requestUrl = url.includes('fmt=json') ? url : `${url}${url.includes('?') ? '&' : '?'}fmt=json`;
+        // Safely parse URL and append fmt=json 
+        const parsedUrl = new URL(url);
+        parsedUrl.searchParams.set('fmt', 'json');
 
         return requestQueue.then(() =>
-            fetch(requestUrl)
-        .then((res) => {
-            if (!res.ok) throw new  Error(`HTTP error ${res.status}`);
-            return res.json();
-        })
-        .catch((err) => {
-            console.warn("MusicBrainz request failed:", err.message);
-            return null;
-        })
-    );
-}
+            fetch(parsedUrl.toString())
+                .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                    return res.json();
+                })
+                .catch((err) => {
+                    console.warn("MusicBrainz request failed:", err.message);
+                    return null;
+                })
+            );
+        }
     async function fetchJson(url) {
         const cached = getCached(url);
         if (cached) return cached;
