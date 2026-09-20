@@ -3214,24 +3214,19 @@ function initProfileAuth() {
      if (cancelDeleteBtn && deleteConfirmBox) {
         cancelDeleteBtn.addEventListener("click", () => {
             deleteConfirmBox.hidden = true;
-            if (confirmUsernameInput) {
-                confirmUsernameInput.value = "";
+            if (confirmEmailInput) {
+                confirmEmailInput.value = "";
             }
             if (confirmDeleteBtn) {
                 confirmDeleteBtn.disabled = true;
             }
         });
      }
-     if (confirmUsernameInput && confirmDeleteBtn) {
-        confirmUsernameInput.addEventListener("input", async () => {
-            const enteredEmail = confirmUsernameInput.value.trim().toLowerCase();
-            const { data: { user } } = await window.coucousupabase?.auth?.getUser() || { data: { user: null } };
-            const expectedEmail = user?.email?.trim().toLowerCase() || "";
-            confirmDeleteBtn.disabled = !( 
-                expectedEmail &&
-                enteredEmail ===
-                expectedEmail
-            );
+     if (confirmEmailInput && confirmDeleteBtn) {
+        confirmEmailInput.addEventListener("input", () => {
+            const enteredEmail = confirmEmailInput.value.trim().toLowerCase();
+            const expectedEmail = (currentSessionUser?.email || currentUser?.email || "").trim().toLowerCase();
+            confirmDeleteBtn.disabled = !(expectedEmail && enteredEmail === expectedEmail);
         });
     }
     if (confirmDeleteBtn) {
