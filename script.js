@@ -2903,15 +2903,16 @@ function updateProfileAuthUi(user, profile) {
     const accountEmailDisplay = document.getElementById("account-email-display");
     const settingsUsername = document.getElementById("settings-username");
     const settingsBio = document.getElementById("settings-bio");
-    const confirmUsernameTarget = document.getElementById("confirm-username-target");
-    const confirmUsernameInput = document.getElementById("delete-confirm-username-input");
+    const confirmEmailTarget = document.getElementById("confirm-email-target");
+    const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const confirmBtn = document.getElementById("confirm-delete-account-btn");
     const confirmBox = document.getElementById("delete-account-confirm-box");
 
     if (settingsMenu) settingsMenu.hidden = true;
     if (accountSettings) accountSettings.hidden = true;
     if (confirmBox) confirmBox.hidden = true;
-    if (confirmUsernameInput) confirmUsernameInput.value = "";
+    if (confirmEmailInput) confirmEmailInput.value = "";
+    if (confirmEmailTarget) confirmEmailTarget.textContent = user?.email || "";
     if (confirmBtn) confirmBtn.disabled = true;
 
     if (!user) {
