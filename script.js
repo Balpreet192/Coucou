@@ -2940,7 +2940,7 @@ function updateProfileAuthUi(user, profile) {
     if (accountEmailDisplay) accountEmailDisplay.textContent = user.email || "";
     if (settingsUsername) settingsUsername.value = username || "";
     if (settingsBio) settingsBio.value = profile && profile.bio ? profile.bio : "";
-    if (confirmUsernameTarget) confirmUsernameTarget.textContent = username || "";
+    if (confirmEmailTarget) confirmEmailTarget.textContent = user?.email || "";
     if (signedOutView) signedOutView.hidden = true;
     if (settingsToggle) settingsToggle.hidden = false;
     if (usernameSetup) usernameSetup.hidden = Boolean(profile && profile.username);
