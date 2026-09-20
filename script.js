@@ -3086,7 +3086,7 @@ function initProfileAuth() {
     if (confirmEmailInput && confirmDeleteBtn) {
         confirmEmailInput.addEventListener("input", () => {
             const typed = confirmEmailInput.value.trim().toLowerCase();
-            const expected = (currentsessionUser?.email || currentUser?.email || "").trim().toLowerCase();
+            const expected = (currentSessionUser?.email || currentUser?.email || "").trim().toLowerCase();
 
             confirmDeleteBtn.disabled = !(typed.length > 0 && typed === expected);
         });
@@ -3202,9 +3202,9 @@ function initProfileAuth() {
     if (deleteAccountBtn && deleteConfirmBox) {
         deleteAccountBtn.addEventListener("click",() => {
             deleteConfirmBox.hidden = false;
-            if (confirmUsernameInput) {
-                confirmUsernameInput.value = "";
-                confirmUsernameInput.focus();
+            if (confirmEmailInput) {
+                confirmEmailInput.value = "";
+                confirmEmailInput.focus();
             } 
             if (confirmDeleteBtn) {
                 confirmDeleteBtn.disabled = true;
@@ -3236,7 +3236,7 @@ function initProfileAuth() {
                 data: { user }
             } = await 
             window.coucouSupabase?.auth?.getUser() || { data: { user: null } };
-            const enteredEmail = confirmUsernameInput?.value.trim().toLowerCase() || "";
+            const enteredEmail = confirmEmailInput?.value.trim().toLowerCase() || "";
             const expectedEmail = user?.email?.trim().toLowerCase() || "";
             if (!user || !expectedEmail || enteredEmail !== expectedEmail) {
                 setProfileAuthState("Please enter your account email correctly.", true);
