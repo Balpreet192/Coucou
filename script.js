@@ -3081,8 +3081,16 @@ function initProfileAuth() {
     const deleteAccountBtn = document.getElementById("profile-delete-account-btn");
     const cancelDeleteBtn = document.getElementById("cancel-delete-account-btn");
     const confirmDeleteBtn = document.getElementById("confirm-delete-account-btn");
-    const confirmUsernameInput = document.getElementById("delete-confirm-username-input");
+    const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
+    if (confirmEmailInput && confirmDeleteBtn) {
+        confirmEmailInput.addEventListener("input", () => {
+            const typed = confirmEmailInput.value.trim().toLowerCase();
+            const expected = (currentsessionUser?.email || currentUser?.email || "").trim().toLowerCase();
+
+            confirmDeleteBtn.disabled = !(typed.length > 0 && typed === expected);
+        });
+    }
 
     if (!form || !signOutButton) return;
 
