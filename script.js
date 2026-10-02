@@ -2964,7 +2964,7 @@ async function saveUserProfile(username, bio) {
     }
 
     const { data, error } = await window.coucouSupabase
-        .from("profile")
+        .from("profiles")
         .upsert({
             id: currentSessionUser.id,
             username: normalizedUsername,
