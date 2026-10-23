@@ -197,6 +197,11 @@ header p {
       gap: 10px;
 }
 
+.profile-auth-form[hidden],
+.public-profile-view[hidden] {
+      display: none;
+}
+
 .profile-auth-form label {
       display: grid;
       gap: 4px;
@@ -3032,6 +3037,169 @@ header p {
       min-height: 120px;
       box-sizing: border-box;
       contain: layout; /* Lock layout so browser doesn't reflow height on first click */
+}
+
+.visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+}
+
+.user-search-section {
+      margin: 24px 0;
+      padding: 22px;
+      border: 1px solid #d9edf5;
+      border-radius: 18px;
+      background: #ffffff;
+}
+
+.user-search-section h3,
+.public-profile-view h3 {
+      margin: 0 0 8px;
+      color: #6b4c5a;
+}
+
+.user-search-form {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+}
+
+.user-search-form input {
+      min-width: 0;
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #cfeaf3;
+      border-radius: 8px;
+      font: inherit;
+}
+
+.user-search-form button,
+.public-user-card button,
+.public-profile-view button,
+.text-button,
+.secondary-auth-button {
+      min-height: 40px;
+      padding: 9px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #d7a26d;
+      color: white;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+}
+
+.user-search-form button:hover,
+.public-user-card button:hover,
+.public-profile-view button:hover {
+      background: #b88a5a;
+}
+
+.profile-auth-form .text-button,
+#forgot-password-link {
+      justify-self: start;
+      padding: 4px 0;
+      min-height: auto;
+      background: transparent;
+      color: #7a4a1d;
+      text-decoration: underline;
+}
+
+.secondary-auth-button {
+      background: #557080;
+}
+
+.secondary-auth-button:hover {
+      background: #405967;
+}
+
+.user-search-state,
+.profile-social-state {
+      min-height: 20px;
+      margin: 10px 0;
+      font-size: 14px;
+}
+
+.user-search-results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+}
+
+.public-user-card,
+.public-profile-view {
+      display: grid;
+      gap: 9px;
+      padding: 18px;
+      border: 1px solid #d9edf5;
+      border-radius: 14px;
+      background: #f9fdff;
+}
+
+.public-user-card h4 {
+      color: #6b4c5a;
+      font-size: 18px;
+}
+
+.public-user-card p,
+.public-profile-view p {
+      overflow-wrap: anywhere;
+      font-size: 14px;
+}
+
+.public-user-id {
+      color: #7a4a1d;
+      font-weight: 600;
+}
+
+.public-user-counts {
+      color: #557080;
+}
+
+.public-user-card button,
+.public-profile-view button {
+      justify-self: start;
+}
+
+.public-user-follow-button[aria-pressed="true"] {
+      background: #557080;
+}
+
+.public-user-card button:disabled,
+.public-profile-view button:disabled,
+.user-search-form button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+}
+
+.password-recovery-form {
+      margin-top: 16px;
+}
+
+.profile-auth-state.profile-auth-error,
+.user-search-state.profile-auth-error {
+      color: #a94442;
+}
+
+@media (max-width: 480px) {
+      .user-search-section {
+            padding: 16px;
+      }
+
+      .user-search-form {
+            flex-direction: column;
+      }
+
+      .user-search-form button {
+            width: 100%;
+      }
 }
 
 /* Force detail to display smoothly when unhidden */

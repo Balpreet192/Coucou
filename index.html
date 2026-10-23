@@ -35,6 +35,18 @@
               <section id="discover" class="content-section">
                      <h2>Discover</h2>
                      <p>Find new people and interesting creators.</p>
+                     <section class="user-search-section" aria-labelledby="user-search-heading">
+                            <h3 id="user-search-heading">Find people</h3>
+                            <p>Search for a username or public Coucou ID.</p>
+                            <form id="user-search-form" class="user-search-form">
+                                   <label class="visually-hidden" for="user-search-input">Search users by username or public ID</label>
+                                   <input type="search" id="user-search-input" maxlength="50" autocomplete="off" placeholder="Username or public ID">
+                                   <button type="submit" id="user-search-button">Search</button>
+                            </form>
+                            <p id="user-search-state" class="user-search-state" aria-live="polite"></p>
+                            <div id="user-search-results" class="user-search-results" aria-live="polite"></div>
+                            <section id="public-profile-view" class="public-profile-view" aria-live="polite" hidden></section>
+                     </section>
                      <div id="creators-grid" class="creators-grid" aria-live="polite"></div>
               </section>
 
@@ -167,9 +179,10 @@
                                    <p id="profile-bio">Your bio will go here.</p>
                                    <div class="profile-stats">
                                           <span><strong id="profile-post-count">0</strong> posts</span>
-                                          <span><strong>0</strong> Followers</span>
-                                          <span><strong>0</strong> Following</span>
+                                          <span><strong id="profile-follower-count">0</strong> Followers</span>
+                                          <span><strong id="profile-following-count">0</strong> Following</span>
                                    </div>
+                                   <p id="profile-social-state" class="profile-social-state" aria-live="polite"></p>
                                    <div class="profile-interests">
                                           <h3>Interests</h3>
                                           <p>Movies . Music . Art . Books</p>
@@ -217,7 +230,35 @@
                                                                <button type="submit" id="auth-submit-btn" class="auth-submit-btn">Sign in</button>
                                                         </div>
                                                  </form>
+                                                 <button type="button" id="forgot-password-link" class="text-button">Forgot password?</button>
+                                                 <form id="forgot-password-form" class="profile-auth-form" hidden>
+                                                        <p>Enter the email address for your account and we’ll send a reset link if an account exists.</p>
+                                                        <label>
+                                                               <span>Email</span>
+                                                               <input type="email" id="recovery-email" autocomplete="email" required placeholder="you@example.com">
+                                                        </label>
+                                                        <div class="profile-auth-actions">
+                                                               <button type="submit" id="send-recovery-email-button">Send reset link</button>
+                                                               <button type="button" id="cancel-recovery-request" class="secondary-auth-button">Back to sign in</button>
+                                                        </div>
+                                                 </form>
                                           </div>
+                                          <form id="password-recovery-form" class="profile-auth-form password-recovery-form" hidden>
+                                                 <h3>Choose a new password</h3>
+                                                 <p>Enter and confirm your new password. It must be at least 6 characters.</p>
+                                                 <label>
+                                                        <span>New password</span>
+                                                        <input type="password" id="recovery-new-password" autocomplete="new-password" minlength="6" required>
+                                                 </label>
+                                                 <label>
+                                                        <span>Confirm new password</span>
+                                                        <input type="password" id="recovery-confirm-password" autocomplete="new-password" minlength="6" required>
+                                                 </label>
+                                                 <div class="profile-auth-actions">
+                                                        <button type="submit" id="update-recovery-password-button">Update password</button>
+                                                        <button type="button" id="finish-password-recovery" class="secondary-auth-button">Continue to profile</button>
+                                                 </div>
+                                          </form>
 
                                           <!-- Username Setup for Existing Accounts -->
                                           <div class="profile-username-setup" id="profile-username-setup" hidden>

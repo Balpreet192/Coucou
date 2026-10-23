@@ -1,33 +1,26 @@
 function initNavigation() {
     const navLinks = document.querySelectorAll(".nav-link");
-    const sections = document.querySelectorAll(".content-section");
 
     navLinks.forEach((link) => {
         link.addEventListener("click", (e) => {
             e.preventDefault();
             const targetSection = link.getAttribute("data-section");
-
-            // Hide all sections
-            sections.forEach((section) => {
-                section.classList.remove("active");
-            });
-
-            // Show target section
-            const target = document.getElementById(targetSection);
-            if (target) {
-                target.classList.add("active");
-            }
-
-            // Update active nav link
-            navLinks.forEach((item) => {
-                item.classList.remove("active");
-            });
-            link.classList.add("active");
-
-            // Scroll to top
-            window.scrollTo(0, 0);
+            activateContentSection(targetSection);
         });
     });
+}
+
+function activateContentSection(targetSection) {
+    const target = document.getElementById(targetSection);
+    if (!target) return;
+
+    document.querySelectorAll(".content-section").forEach((section) => {
+        section.classList.toggle("active", section === target);
+    });
+    document.querySelectorAll(".nav-link").forEach((link) => {
+        link.classList.toggle("active", link.dataset.section === targetSection);
+    });
+    window.scrollTo(0, 0);
 }
 
 function initCollectionTabs() {
@@ -2760,6 +2753,14 @@ function renderMovieDetail(movie) {
 let currentSessionUser = null;
 let currentAuthMode = "sign-in";
 let currentProfile = null;
+let passwordRecoveryActive = false;
+let passwordRecoveryInvalid = false;
+let passwordRecoveryComplete = false;
+let userSearchTimer = null;
+let userSearchRequestId = 0;
+let userSearchResults = [];
+let publicProfilesById = new Map();
+let publicSocialState = new Map();
 
 function setProfileAuthState(message, isError) {
     const state = document.getElementById("profile-auth-state");
@@ -2778,6 +2779,276 @@ function getPublicUsername(profile, user) {
     if (username) return getNormalizedUsername(username);
     const metadata = user && user.user_metadata ? user.user_metadata : {};
     return getNormalizedUsername(metadata.username || "user");
+}
+
+function setUserSearchState(message, isError) {
+    const state = document.getElementById("user-search-state");
+    if (!state) return;
+    state.textContent = message || "";
+    state.classList.toggle("profile-auth-error", Boolean(isError));
+}
+
+function createPublicUserCard(profile, socialState, includeViewAction) {
+    const card = document.createElement("article");
+    card.className = "public-user-card";
+
+    const heading = document.createElement("h4");
+    heading.textContent = profile.username ? `@${profile.username}` : "Coucou member";
+    card.appendChild(heading);
+
+    const publicId = document.createElement("p");
+    publicId.className = "public-user-id";
+    publicId.textContent = `Coucou ID: ${profile.public_id}`;
+    card.appendChild(publicId);
+
+    if (profile.bio) {
+        const bio = document.createElement("p");
+        bio.className = "public-user-bio";
+        bio.textContent = profile.bio;
+        card.appendChild(bio);
+    }
+
+    const counts = document.createElement("p");
+    counts.className = "public-user-counts";
+    counts.textContent = `${socialState ? socialState.followers_count : 0} followers · ${socialState ? socialState.following_count : 0} following`;
+    card.appendChild(counts);
+
+    if (includeViewAction) {
+        const viewButton = document.createElement("button");
+        viewButton.type = "button";
+        viewButton.className = "public-user-view-button";
+        viewButton.dataset.userAction = "view";
+        viewButton.dataset.publicId = profile.public_id;
+        viewButton.textContent = "View Profile";
+        card.appendChild(viewButton);
+    }
+
+    if (currentSessionUser && profile.public_id !== (currentProfile && currentProfile.public_id)) {
+        const followButton = document.createElement("button");
+        followButton.type = "button";
+        followButton.className = "public-user-follow-button";
+        followButton.dataset.userAction = "follow";
+        followButton.dataset.publicId = profile.public_id;
+        followButton.setAttribute("aria-pressed", String(Boolean(socialState && socialState.is_following)));
+        followButton.textContent = socialState && socialState.is_following ? "Following" : "Follow";
+        card.appendChild(followButton);
+    }
+
+    return card;
+}
+
+function renderUserSearchResults() {
+    const resultsContainer = document.getElementById("user-search-results");
+    if (!resultsContainer) return;
+    resultsContainer.replaceChildren();
+
+    userSearchResults.forEach((profile) => {
+        const state = publicSocialState.get(profile.public_id);
+        resultsContainer.appendChild(createPublicUserCard(profile, state, true));
+    });
+}
+
+function renderPublicProfileView(profile, socialState) {
+    const profileView = document.getElementById("public-profile-view");
+    if (!profileView) return;
+    profileView.replaceChildren();
+
+    const heading = document.createElement("h3");
+    heading.textContent = profile.username ? `@${profile.username}` : "Coucou member";
+    profileView.appendChild(heading);
+    const publicId = document.createElement("p");
+    publicId.textContent = `Coucou ID: ${profile.public_id}`;
+    profileView.appendChild(publicId);
+    if (profile.bio) {
+        const bio = document.createElement("p");
+        bio.textContent = profile.bio;
+        profileView.appendChild(bio);
+    }
+
+    const counts = document.createElement("p");
+    counts.className = "public-user-counts";
+    counts.textContent = `${socialState ? socialState.followers_count : 0} followers · ${socialState ? socialState.following_count : 0} following`;
+    profileView.appendChild(counts);
+
+    if (currentSessionUser && profile.public_id !== (currentProfile && currentProfile.public_id)) {
+        const followButton = document.createElement("button");
+        followButton.type = "button";
+        followButton.className = "public-user-follow-button";
+        followButton.dataset.userAction = "follow";
+        followButton.dataset.publicId = profile.public_id;
+        followButton.setAttribute("aria-pressed", String(Boolean(socialState && socialState.is_following)));
+        followButton.textContent = socialState && socialState.is_following ? "Following" : "Follow";
+        profileView.appendChild(followButton);
+    }
+
+    const backButton = document.createElement("button");
+    backButton.type = "button";
+    backButton.className = "secondary-auth-button";
+    backButton.textContent = "Back to results";
+    backButton.addEventListener("click", () => {
+        profileView.hidden = true;
+        document.getElementById("user-search-input")?.focus();
+    }, { once: true });
+    profileView.appendChild(backButton);
+    profileView.hidden = false;
+}
+
+async function loadPublicSocialState(publicIds) {
+    if (!window.coucouSupabase || !currentSessionUser || !publicIds.length) return new Map();
+    const { data, error } = await window.coucouSupabase.rpc("get_public_user_social_state", {
+        p_public_ids: publicIds
+    });
+    if (error) throw error;
+    return new Map((data || []).map((row) => [row.public_id, row]));
+}
+
+async function searchPublicUsers() {
+    const input = document.getElementById("user-search-input");
+    const resultsContainer = document.getElementById("user-search-results");
+    const profileView = document.getElementById("public-profile-view");
+    if (!input || !resultsContainer) return;
+
+    const requestId = ++userSearchRequestId;
+    const query = getNormalizedUsername(input.value).trim();
+    profileView.hidden = true;
+    resultsContainer.replaceChildren();
+    userSearchResults = [];
+    publicProfilesById = new Map();
+    publicSocialState = new Map();
+
+    if (!currentSessionUser) {
+        setUserSearchState("Sign in to search for and follow people.", true);
+        return;
+    }
+    if (query.length < 2 && !/^u_[a-f0-9]{16}$/i.test(query)) {
+        setUserSearchState(query ? "Enter at least 2 characters to search usernames." : "");
+        return;
+    }
+
+    setUserSearchState("Searching...");
+    try {
+        const { data, error } = await window.coucouSupabase.rpc("search_public_profiles", {
+            p_query: query
+        });
+        if (requestId !== userSearchRequestId) return;
+        if (error) throw error;
+
+        const profilesByPublicId = new Map();
+        (data || []).forEach((profile) => {
+            if (
+                profile.public_id &&
+                profile.public_id !== (currentProfile && currentProfile.public_id)
+            ) {
+                profilesByPublicId.set(profile.public_id, profile);
+            }
+        });
+        userSearchResults = Array.from(profilesByPublicId.values()).slice(0, 12);
+        publicProfilesById = new Map(userSearchResults.map((profile) => [profile.public_id, profile]));
+        publicSocialState = await loadPublicSocialState(userSearchResults.map((profile) => profile.public_id));
+        if (requestId !== userSearchRequestId) return;
+        renderUserSearchResults();
+        setUserSearchState(userSearchResults.length ? `${userSearchResults.length} people found.` : "No matching people found.");
+    } catch (error) {
+        if (requestId !== userSearchRequestId) return;
+        setUserSearchState(`Could not search users: ${error.message || "Please try again."}`, true);
+    }
+}
+
+async function refreshPublicSocialState() {
+    const publicIds = userSearchResults.map((profile) => profile.public_id);
+    let ownPublicId = currentProfile && currentProfile.public_id;
+    if (currentSessionUser && !ownPublicId) {
+        const { data, error } = await window.coucouSupabase
+            .from("profiles")
+            .select("public_id")
+            .eq("id", currentSessionUser.id)
+            .maybeSingle();
+        if (error) throw error;
+        ownPublicId = data && data.public_id;
+        if (ownPublicId && currentProfile) currentProfile = { ...currentProfile, public_id: ownPublicId };
+    }
+    if (ownPublicId) publicIds.push(ownPublicId);
+    if (!publicIds.length) {
+        const profileState = document.getElementById("profile-social-state");
+        if (currentSessionUser && profileState) {
+            profileState.textContent = "Follower counts are unavailable for this profile.";
+        }
+        return;
+    }
+    publicSocialState = await loadPublicSocialState(Array.from(new Set(publicIds)));
+    renderUserSearchResults();
+
+    const viewedProfile = publicProfilesById.get(
+        document.querySelector("#public-profile-view [data-public-id]")?.dataset.publicId
+    );
+    if (viewedProfile) renderPublicProfileView(viewedProfile, publicSocialState.get(viewedProfile.public_id));
+    const ownState = currentProfile && publicSocialState.get(currentProfile.public_id);
+    const followers = document.getElementById("profile-follower-count");
+    const following = document.getElementById("profile-following-count");
+    const profileState = document.getElementById("profile-social-state");
+    if (ownState && followers && following) {
+        followers.textContent = String(ownState.followers_count);
+        following.textContent = String(ownState.following_count);
+        if (profileState) profileState.textContent = "";
+    } else if (currentSessionUser && profileState) {
+        profileState.textContent = "Follower counts are unavailable until the social database migration is applied.";
+    }
+}
+
+async function handlePublicUserAction(button) {
+    const publicId = button.dataset.publicId;
+    const profile = publicProfilesById.get(publicId);
+    if (!profile) return;
+
+    if (button.dataset.userAction === "view") {
+        renderPublicProfileView(profile, publicSocialState.get(publicId));
+        document.getElementById("public-profile-view").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+    }
+    if (button.dataset.userAction !== "follow" || !currentSessionUser) return;
+
+    const state = publicSocialState.get(publicId);
+    const shouldFollow = !(state && state.is_following);
+    button.disabled = true;
+    button.textContent = shouldFollow ? "Following..." : "Unfollowing...";
+    try {
+        const { error } = await window.coucouSupabase.rpc(
+            shouldFollow ? "follow_user_by_public_id" : "unfollow_user_by_public_id",
+            { p_public_id: publicId }
+        );
+        if (error) throw error;
+        await refreshPublicSocialState();
+        const updated = publicSocialState.get(publicId);
+        const displayName = profile.username ? `@${profile.username}` : profile.public_id;
+        setUserSearchState(updated && updated.is_following ? `Following ${displayName}.` : `Unfollowed ${displayName}.`);
+    } catch (error) {
+        button.disabled = false;
+        button.textContent = state && state.is_following ? "Following" : "Follow";
+        setUserSearchState(`Could not update follow status: ${error.message || "Please try again."}`, true);
+    }
+}
+
+function initUserSearch() {
+    const form = document.getElementById("user-search-form");
+    const input = document.getElementById("user-search-input");
+    const discoverSection = document.getElementById("discover");
+    if (!form || !input || !discoverSection) return;
+
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.clearTimeout(userSearchTimer);
+        void searchPublicUsers();
+    });
+    input.addEventListener("input", () => {
+        window.clearTimeout(userSearchTimer);
+        userSearchRequestId += 1;
+        userSearchTimer = window.setTimeout(() => void searchPublicUsers(), 350);
+    });
+    discoverSection.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-user-action]");
+        if (!button || !discoverSection.contains(button)) return;
+        void handlePublicUserAction(button);
+    });
 }
 
 function renderPosts(posts) {
@@ -2907,6 +3178,9 @@ function updateProfileAuthUi(user, profile) {
     const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const confirmBtn = document.getElementById("confirm-delete-account-btn");
     const confirmBox = document.getElementById("delete-account-confirm-box");
+    const followerCount = document.getElementById("profile-follower-count");
+    const followingCount = document.getElementById("profile-following-count");
+    const profileSocialState = document.getElementById("profile-social-state");
 
     if (settingsMenu) settingsMenu.hidden = true;
     if (accountSettings) accountSettings.hidden = true;
@@ -2925,7 +3199,29 @@ function updateProfileAuthUi(user, profile) {
         if (signedOutView) signedOutView.hidden = false;
         if (usernameSetup) usernameSetup.hidden = true;
         if (settingsToggle) settingsToggle.hidden = true;
-        setProfileAuthState("");
+        if (followerCount) followerCount.textContent = "0";
+        if (followingCount) followingCount.textContent = "0";
+        if (profileSocialState) profileSocialState.textContent = "";
+        if (!passwordRecoveryActive) {
+            setUserSearchState("");
+            userSearchResults = [];
+            publicProfilesById = new Map();
+            publicSocialState = new Map();
+            const results = document.getElementById("user-search-results");
+            if (results) results.replaceChildren();
+        }
+        if (passwordRecoveryActive) {
+            passwordRecoveryActive = false;
+            passwordRecoveryInvalid = true;
+            const recoveryForm = document.getElementById("password-recovery-form");
+            if (recoveryForm) recoveryForm.hidden = true;
+            setProfileAuthState("This reset session is invalid or expired. Request a new password reset link.", true);
+        } else if (passwordRecoveryInvalid) {
+            setProfileAuthState("This password reset link is invalid or has expired. Request a new reset link.", true);
+        } else {
+            passwordRecoveryComplete = false;
+            setProfileAuthState("");
+        }
         void loadPostsFromSupabase();
         return;
     }
@@ -2945,7 +3241,24 @@ function updateProfileAuthUi(user, profile) {
     if (settingsToggle) settingsToggle.hidden = false;
     if (usernameSetup) usernameSetup.hidden = Boolean(profile && profile.username);
 
-    setProfileAuthState(profile && profile.username ? "Signed in." : "Choose a username to finish your profile.");
+    setProfileAuthState(
+        passwordRecoveryActive
+            ? "Enter and confirm your new password below."
+            : passwordRecoveryComplete
+            ? "Password updated successfully. You are signed in and can continue to your profile."
+            : passwordRecoveryInvalid
+                ? "This password reset link is invalid or has expired. Request a new reset link."
+                : profile && profile.username
+                ? "Signed in."
+                : "Choose a username to finish your profile."
+    );
+    if (user) {
+        void refreshPublicSocialState().catch((error) => {
+            if (profileSocialState) {
+                profileSocialState.textContent = `Follower counts could not be loaded: ${error.message || "Please try again."}`;
+            }
+        });
+    }
     void loadPostsFromSupabase();
 }
 
@@ -3063,6 +3376,161 @@ async function submitProfileAuth(action) {
     }
 }
 
+function readRecoveryUrlError() {
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    return searchParams.get("error") || hashParams.get("error") ||
+        searchParams.get("error_code") || hashParams.get("error_code") ||
+        searchParams.get("error_description") || hashParams.get("error_description");
+}
+
+function showPasswordRecoveryForm(message, isError) {
+    passwordRecoveryActive = true;
+    passwordRecoveryInvalid = false;
+    passwordRecoveryComplete = false;
+    activateContentSection("profile");
+    const recoveryForm = document.getElementById("password-recovery-form");
+    const forgotForm = document.getElementById("forgot-password-form");
+    if (recoveryForm) recoveryForm.hidden = false;
+    if (forgotForm) forgotForm.hidden = true;
+    document.getElementById("recovery-new-password")?.focus();
+    if (isError) passwordRecoveryInvalid = true;
+    setProfileAuthState(message || "Enter a new password for your account.", isError);
+}
+
+function initPasswordRecoveryForms() {
+    const signInForm = document.getElementById("profile-auth-form");
+    const forgotLink = document.getElementById("forgot-password-link");
+    const forgotForm = document.getElementById("forgot-password-form");
+    const emailInput = document.getElementById("recovery-email");
+    const cancelRequest = document.getElementById("cancel-recovery-request");
+    const sendButton = document.getElementById("send-recovery-email-button");
+    const recoveryForm = document.getElementById("password-recovery-form");
+    const finishButton = document.getElementById("finish-password-recovery");
+
+    if (forgotLink && forgotForm && signInForm) {
+        forgotLink.addEventListener("click", () => {
+            const signInEmail = document.getElementById("profile-auth-email");
+            if (emailInput && signInEmail) emailInput.value = signInEmail.value.trim();
+            signInForm.hidden = true;
+            forgotLink.hidden = true;
+            forgotForm.hidden = false;
+            emailInput?.focus();
+            setProfileAuthState("");
+        });
+    }
+
+    if (cancelRequest && forgotForm && signInForm && forgotLink) {
+        cancelRequest.addEventListener("click", () => {
+            forgotForm.hidden = true;
+            signInForm.hidden = false;
+            forgotLink.hidden = false;
+            setProfileAuthState("");
+            document.getElementById("profile-auth-email")?.focus();
+        });
+    }
+
+    if (forgotForm && emailInput && sendButton) {
+        forgotForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!emailInput.validity.valid) {
+                emailInput.reportValidity();
+                return;
+            }
+            if (!window.coucouSupabase) {
+                setProfileAuthState("Password recovery is unavailable right now. Please try again later.", true);
+                return;
+            }
+
+            sendButton.disabled = true;
+            setProfileAuthState("Sending reset request...");
+            try {
+                const { error } = await window.coucouSupabase.auth.resetPasswordForEmail(
+                    emailInput.value.trim(),
+                    { redirectTo: "https://balpreet192.github.io/Coucou/" }
+                );
+                if (error) {
+                    setProfileAuthState("We could not submit the reset request right now. Please try again later.", true);
+                    console.error("[Auth] Password recovery request failed:", error.message);
+                    return;
+                }
+                setProfileAuthState("If an account exists for that email, a password reset link will be sent.");
+                forgotForm.hidden = true;
+                signInForm.hidden = false;
+                forgotLink.hidden = false;
+                emailInput.value = "";
+            } catch (error) {
+                setProfileAuthState("We could not submit the reset request because of a network error. Please try again.", true);
+                console.error("[Auth] Password recovery request failed:", error);
+            } finally {
+                sendButton.disabled = false;
+            }
+        });
+    }
+
+    if (recoveryForm) {
+        recoveryForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const newPasswordInput = document.getElementById("recovery-new-password");
+            const confirmPasswordInput = document.getElementById("recovery-confirm-password");
+            const submitButton = document.getElementById("update-recovery-password-button");
+            const newPassword = newPasswordInput ? newPasswordInput.value : "";
+            const confirmPassword = confirmPasswordInput ? confirmPasswordInput.value : "";
+            if (!newPasswordInput || !confirmPasswordInput || !submitButton) return;
+            if (newPassword.length < 6) {
+                setProfileAuthState("Password must be at least 6 characters.", true);
+                newPasswordInput.focus();
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                setProfileAuthState("The passwords do not match. Please try again.", true);
+                confirmPasswordInput.focus();
+                return;
+            }
+            if (!passwordRecoveryActive || !currentSessionUser || !window.coucouSupabase) {
+                setProfileAuthState("This reset session is invalid or expired. Request a new password reset link.", true);
+                return;
+            }
+
+            submitButton.disabled = true;
+            setProfileAuthState("Updating your password...");
+            try {
+                const { error } = await window.coucouSupabase.auth.updateUser({ password: newPassword });
+                if (error) {
+                    setProfileAuthState(`Your password was not updated: ${error.message}`, true);
+                    return;
+                }
+                newPasswordInput.value = "";
+                confirmPasswordInput.value = "";
+                recoveryForm.hidden = true;
+                passwordRecoveryActive = false;
+                passwordRecoveryComplete = true;
+                setProfileAuthState("Password updated successfully. You are signed in and can continue to your profile.");
+            } catch (error) {
+                setProfileAuthState(`Your password could not be updated: ${error.message || "Please check your connection and try again."}`, true);
+                console.error("[Auth] Password update failed:", error);
+            } finally {
+                submitButton.disabled = false;
+            }
+        });
+    }
+
+    if (finishButton && recoveryForm) {
+        finishButton.addEventListener("click", () => {
+            recoveryForm.hidden = true;
+            passwordRecoveryActive = false;
+            setProfileAuthState("You can update your password later in account settings.");
+        });
+    }
+
+    const recoveryError = readRecoveryUrlError();
+    if (recoveryError) {
+        passwordRecoveryInvalid = true;
+        activateContentSection("profile");
+        setProfileAuthState("This password reset link is invalid or has expired. Request a new reset link.", true);
+    }
+}
+
 function initProfileAuth() {
     const form = document.getElementById("profile-auth-form");
     const signOutButton = document.getElementById("profile-sign-out");
@@ -3083,24 +3551,26 @@ function initProfileAuth() {
     const confirmDeleteBtn = document.getElementById("confirm-delete-account-btn");
     const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
-    if (confirmEmailInput && confirmDeleteBtn) {
-        confirmEmailInput.addEventListener("input", () => {
-            const typed = confirmEmailInput.value.trim().toLowerCase();
-            const expected = (currentSessionUser?.email || currentUser?.email || "").trim().toLowerCase();
-
-            confirmDeleteBtn.disabled = !(typed.length > 0 && typed === expected);
-        });
-    }
+    initPasswordRecoveryForms();
 
     if (!form || !signOutButton) return;
 
     const setAuthMode = (mode) => {
         currentAuthMode = mode;
         const signUpMode = mode === "sign-up";
+        const forgotLink = document.getElementById("forgot-password-link");
+        const forgotForm = document.getElementById("forgot-password-form");
         if (signupFields) signupFields.hidden = !signUpMode;
         if (tabSignIn) tabSignIn.classList.toggle("active", !signUpMode);
         if (tabSignUp) tabSignUp.classList.toggle("active", signUpMode);
         if (submitBtn) submitBtn.textContent = signUpMode ? "Create account" : "Sign in";
+        if (signUpMode) {
+            if (forgotForm) forgotForm.hidden = true;
+            form.hidden = false;
+            if (forgotLink) forgotLink.hidden = true;
+        } else {
+            if (forgotLink) forgotLink.hidden = false;
+        }
     };
 
     if (tabSignIn) tabSignIn.addEventListener("click", () => setAuthMode("sign-in"));
@@ -3225,7 +3695,7 @@ function initProfileAuth() {
      if (confirmEmailInput && confirmDeleteBtn) {
         confirmEmailInput.addEventListener("input", () => {
             const enteredEmail = confirmEmailInput.value.trim().toLowerCase();
-            const expectedEmail = (currentSessionUser?.email || currentUser?.email || "").trim().toLowerCase();
+            const expectedEmail = (currentSessionUser?.email || "").trim().toLowerCase();
             confirmDeleteBtn.disabled = !(expectedEmail && enteredEmail === expectedEmail);
         });
     }
@@ -3315,11 +3785,27 @@ function initProfileAuth() {
             console.error("[Auth] Session check failed:", error);
         });
 
-    window.coucouSupabase.auth.onAuthStateChange((_event, session) => {
+    window.coucouSupabase.auth.onAuthStateChange((event, session) => {
+        if (event === "PASSWORD_RECOVERY" && session && session.user) {
+            currentSessionUser = session.user;
+            showPasswordRecoveryForm("Enter a new password for your account.");
+        } else if (event === "PASSWORD_RECOVERY") {
+            passwordRecoveryInvalid = true;
+            passwordRecoveryActive = false;
+            const recoveryForm = document.getElementById("password-recovery-form");
+            if (recoveryForm) recoveryForm.hidden = true;
+            activateContentSection("profile");
+            setProfileAuthState("This reset session is invalid or expired. Request a new password reset link.", true);
+        }
         void (async () => {
-            const user = session && session.user;
-            const profile = user ? await ensureProfileForUser(user) : null;
-            updateProfileAuthUi(user, profile);
+            try {
+                const user = session && session.user;
+                const profile = user ? await ensureProfileForUser(user) : null;
+                updateProfileAuthUi(user, profile);
+            } catch (error) {
+                setProfileAuthState("Unable to load your account profile. Please try again.", true);
+                console.error("[Auth] Authentication state update failed:", error);
+            }
         })();
     });
 }
@@ -3663,6 +4149,7 @@ window.addEventListener("DOMContentLoaded", () => {
     initArtSearch();
     initBookSearch();
     initProfileAuth();
+    initUserSearch();
     renderCreators();
     renderMovies();
     loadFeaturedBooks();
