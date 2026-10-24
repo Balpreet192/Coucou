@@ -2524,6 +2524,12 @@ header p {
       gap: 12px;
 }
 
+.saved-collections-state {
+      min-height: 18px;
+      margin: 0 0 10px;
+      font-size: 13px;
+}
+
 .saved-item-thumb {
       display: flex;
       align-items: center;

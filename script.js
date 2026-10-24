@@ -55,6 +55,13 @@ const MOVIE_STORAGE_KEY = "coucouSavedMovies";
 const MUSIC_STORAGE_KEY = "coucouSavedMusic";
 const ART_STORAGE_KEY = "coucouSavedArt";
 const BOOKS_STORAGE_KEY = "coucouSavedBooks";
+const SAVED_COLLECTION_TYPES = new Set(["books", "music", "art"]);
+let remoteSavedCollections = { books: [], music: [], art: [] };
+let remoteSavedCollectionsUserId = null;
+let savedCollectionsLoadPromise = null;
+let savedCollectionsLoadUserId = null;
+let savedCollectionsLoadGeneration = 0;
+const pendingSavedCollectionKeys = new Set();
 
 // Lookup maps from card id -> full data object, kept in sync whenever a card
 // is created. Event delegation reads an id from the clicked button and looks
@@ -190,6 +197,273 @@ function toggleItemSave(storageKey, itemId) {
     saveItemIds(storageKey, saved);
 }
 
+function getCollectionItemId(collectionType, item) {
+    if (!item) return "";
+    const itemId = collectionType === "music" ? item.mbid : item.id;
+    return itemId === undefined || itemId === null ? "" : String(itemId);
+}
+
+function getSavedCollectionItems(collectionType) {
+    const localItems = collectionType === "books"
+        ? getSavedBookItems()
+        : collectionType === "music"
+            ? getSavedMusicItems()
+            : getSavedArtItems();
+    const remoteItems = remoteSavedCollections[collectionType] || [];
+    const itemsById = new Map();
+
+    localItems.forEach((item) => {
+        const itemId = getCollectionItemId(collectionType, item);
+        if (itemId) itemsById.set(itemId, item);
+    });
+    remoteItems.forEach((item) => {
+        const itemId = getCollectionItemId(collectionType, item);
+        if (itemId) itemsById.set(itemId, item);
+    });
+    return Array.from(itemsById.values());
+}
+
+function isCollectionItemSaved(collectionType, itemId) {
+    return getSavedCollectionItems(collectionType)
+        .some((item) => getCollectionItemId(collectionType, item) === String(itemId));
+}
+
+function renderSavedCollection(collectionType) {
+    if (collectionType === "books") renderSavedBooks();
+    else if (collectionType === "music") renderSavedMusic();
+    else if (collectionType === "art") renderSavedArt();
+}
+
+function updateSavedCollectionState(message, isError) {
+    const state = document.getElementById("saved-collections-state");
+    if (!state) return;
+    state.textContent = message || "";
+    state.classList.toggle("profile-auth-error", Boolean(isError));
+}
+
+function refreshCollectionSaveButtons(collectionType) {
+    document.querySelectorAll("[data-saved-collection-type]").forEach((button) => {
+        if (button.dataset.savedCollectionType === collectionType) {
+            setCollectionSaveButtonState(button, collectionType, button.dataset.savedCollectionId);
+        }
+    });
+}
+
+async function loadSavedCollectionsForUser(user) {
+    if (!user) {
+        savedCollectionsLoadGeneration += 1;
+        remoteSavedCollections = { books: [], music: [], art: [] };
+        remoteSavedCollectionsUserId = null;
+        savedCollectionsLoadPromise = null;
+        savedCollectionsLoadUserId = null;
+        updateSavedCollectionState("");
+        ["books", "music", "art"].forEach((type) => {
+            renderSavedCollection(type);
+            refreshCollectionSaveButtons(type);
+        });
+        return true;
+    }
+
+    if (!window.coucouSupabase) {
+        updateSavedCollectionState("Saved collections are unavailable because Supabase is not connected.", true);
+        return false;
+    }
+
+    if (remoteSavedCollectionsUserId === user.id) return true;
+    if (savedCollectionsLoadPromise && savedCollectionsLoadUserId === user.id) {
+        return savedCollectionsLoadPromise;
+    }
+
+    const generation = ++savedCollectionsLoadGeneration;
+    remoteSavedCollections = { books: [], music: [], art: [] };
+    remoteSavedCollectionsUserId = null;
+    ["books", "music", "art"].forEach((type) => {
+        renderSavedCollection(type);
+        refreshCollectionSaveButtons(type);
+    });
+    savedCollectionsLoadUserId = user.id;
+    updateSavedCollectionState("Loading your saved collections...");
+    const loadPromise = (async () => {
+        try {
+            const { data, error } = await window.coucouSupabase
+                .from("saved_collections")
+                .select("collection_type, item_id, item_data")
+                .eq("user_id", user.id);
+            if (error) throw error;
+            if (generation !== savedCollectionsLoadGeneration) return false;
+
+            const collections = { books: [], music: [], art: [] };
+            (data || []).forEach((row) => {
+                if (
+                    SAVED_COLLECTION_TYPES.has(row.collection_type) &&
+                    row.item_data &&
+                    getCollectionItemId(row.collection_type, row.item_data) === row.item_id
+                ) {
+                    collections[row.collection_type].push(row.item_data);
+                }
+            });
+            remoteSavedCollections = collections;
+            remoteSavedCollectionsUserId = user.id;
+            updateSavedCollectionState("");
+            ["books", "music", "art"].forEach((type) => {
+                renderSavedCollection(type);
+                refreshCollectionSaveButtons(type);
+            });
+            return true;
+        } catch (error) {
+            if (generation === savedCollectionsLoadGeneration) {
+                remoteSavedCollections = { books: [], music: [], art: [] };
+                remoteSavedCollectionsUserId = null;
+                updateSavedCollectionState(`Could not load saved collections: ${error.message || "Please try again."}`, true);
+                ["books", "music", "art"].forEach((type) => {
+                    renderSavedCollection(type);
+                    refreshCollectionSaveButtons(type);
+                });
+            }
+            console.error("[Collections] Saved collection load failed:", error);
+            return false;
+        } finally {
+            if (generation === savedCollectionsLoadGeneration) {
+                savedCollectionsLoadPromise = null;
+                savedCollectionsLoadUserId = null;
+            }
+        }
+    })();
+    savedCollectionsLoadPromise = loadPromise;
+    return loadPromise;
+}
+
+async function toggleSavedCollectionItem(collectionType, itemId, snapshot) {
+    if (!SAVED_COLLECTION_TYPES.has(collectionType)) {
+        throw new Error("This collection type is not supported.");
+    }
+    const normalizedId = String(itemId);
+    const signedInUserId = currentSessionUser && currentSessionUser.id;
+    if (!normalizedId || !snapshot || getCollectionItemId(collectionType, snapshot) !== normalizedId) {
+        throw new Error("The saved item is missing its collection ID or data.");
+    }
+    if (!signedInUserId) {
+        if (window.coucouSupabase && !authSessionResolved) {
+            throw new Error("Checking your account session. Please try saving again in a moment.");
+        }
+        const getLocalItems = collectionType === "books"
+            ? getSavedBookItems
+            : collectionType === "music"
+                ? getSavedMusicItems
+                : getSavedArtItems;
+        const saveLocalItems = collectionType === "books"
+            ? saveBookItems
+            : collectionType === "music"
+                ? saveMusicItems
+                : saveArtItems;
+        const localItems = getLocalItems();
+        const existingIndex = localItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
+        if (existingIndex >= 0) localItems.splice(existingIndex, 1);
+        else localItems.push(snapshot);
+        saveLocalItems(localItems);
+        renderSavedCollection(collectionType);
+        return;
+    }
+
+    if (!window.coucouSupabase) {
+        throw new Error("Saved collections are unavailable because Supabase is not connected.");
+    }
+    if (remoteSavedCollectionsUserId !== signedInUserId) {
+        const loaded = await loadSavedCollectionsForUser({ id: signedInUserId });
+        if (!loaded) throw new Error("Your saved collections could not be loaded. Please try again.");
+    }
+    if (!currentSessionUser || currentSessionUser.id !== signedInUserId) {
+        throw new Error("Your account changed while saving. Please try again.");
+    }
+
+    const remoteItems = remoteSavedCollections[collectionType];
+    const remoteIndex = remoteItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
+    const localItems = collectionType === "books"
+        ? getSavedBookItems()
+        : collectionType === "music"
+            ? getSavedMusicItems()
+            : getSavedArtItems();
+    const localIndex = localItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
+
+    if (remoteIndex >= 0) {
+        const { error } = await window.coucouSupabase
+            .from("saved_collections")
+            .delete()
+            .eq("user_id", signedInUserId)
+            .eq("collection_type", collectionType)
+            .eq("item_id", normalizedId);
+        if (error) throw error;
+        remoteItems.splice(remoteIndex, 1);
+    } else if (localIndex >= 0) {
+        throw new Error("This existing save is browser-only and was left unchanged. Sign out to manage it locally.");
+    } else {
+        const { error } = await window.coucouSupabase
+            .from("saved_collections")
+            .insert({
+                user_id: signedInUserId,
+                collection_type: collectionType,
+                item_id: normalizedId,
+                item_data: snapshot
+            });
+        if (error && error.code !== "23505") throw error;
+        if (error) {
+            if (!remoteItems.some((item) => getCollectionItemId(collectionType, item) === normalizedId)) {
+                remoteItems.push(snapshot);
+            }
+        } else {
+            remoteItems.push(snapshot);
+        }
+    }
+    renderSavedCollection(collectionType);
+}
+
+function setCollectionSaveButtonState(button, collectionType, itemId) {
+    const isSaved = isCollectionItemSaved(collectionType, itemId);
+    button.classList.toggle("saved", isSaved);
+    button.textContent = isSaved ? "Saved" : "Save";
+    button.setAttribute("aria-pressed", String(isSaved));
+}
+
+async function handleSavedCollectionToggle(collectionType, itemId, snapshot, button) {
+    const ownerId = currentSessionUser ? currentSessionUser.id : "browser";
+    const key = `${ownerId}:${collectionType}:${String(itemId)}`;
+    if (pendingSavedCollectionKeys.has(key)) return;
+    pendingSavedCollectionKeys.add(key);
+    document.querySelectorAll("[data-saved-collection-type]").forEach((saveButton) => {
+        if (
+            saveButton.dataset.savedCollectionType === collectionType &&
+            saveButton.dataset.savedCollectionId === String(itemId)
+        ) {
+            saveButton.disabled = true;
+            saveButton.textContent = "Saving...";
+        }
+    });
+    try {
+        await toggleSavedCollectionItem(collectionType, itemId, snapshot);
+        updateSavedCollectionState(currentSessionUser ? "Collection updated for your account." : "Collection updated in this browser.");
+    } catch (error) {
+        updateSavedCollectionState(`Could not save this item: ${error.message || "Please try again."}`, true);
+        console.error("[Collections] Saved collection update failed:", error);
+    } finally {
+        pendingSavedCollectionKeys.delete(key);
+        document.querySelectorAll("[data-saved-collection-type]").forEach((saveButton) => {
+            if (
+                saveButton.dataset.savedCollectionType === collectionType &&
+                saveButton.dataset.savedCollectionId === String(itemId)
+            ) {
+                setCollectionSaveButtonState(saveButton, collectionType, itemId);
+                saveButton.disabled = false;
+            }
+        });
+    }
+}
+
+function configureCollectionSaveButton(button, collectionType, itemId) {
+    button.dataset.savedCollectionType = collectionType;
+    button.dataset.savedCollectionId = String(itemId);
+    setCollectionSaveButtonState(button, collectionType, itemId);
+}
+
 function getSavedMovieIds() {
     return getSavedItemIds(MOVIE_STORAGE_KEY);
 }
@@ -224,21 +498,11 @@ function saveArtItems(items) {
 }
 
 function isArtSaved(artId) {
-    return getSavedArtItems().some((item) => item.id === artId);
+    return isCollectionItemSaved("art", artId);
 }
 
 function toggleArtSave(artId, snapshot) {
-    const saved = getSavedArtItems();
-    const existingIndex = saved.findIndex((item) => item.id === artId);
-
-    if (existingIndex >= 0) {
-        saved.splice(existingIndex, 1);
-    } else if (snapshot) {
-        saved.push(snapshot);
-    }
-
-    saveArtItems(saved);
-    renderSavedArt();
+    return toggleSavedCollectionItem("art", artId, snapshot);
 }
 
 // Books are sourced live from Open Library (string work keys), so saved
@@ -257,21 +521,11 @@ function saveBookItems(items) {
 }
 
 function isBookSaved(bookId) {
-    return getSavedBookItems().some((item) => String(item.id) === String(bookId));
+    return isCollectionItemSaved("books", bookId);
 }
 
 function toggleBookSave(bookId, snapshot) {
-    const saved = getSavedBookItems();
-    const existingIndex = saved.findIndex((item) => String(item.id) === String(bookId));
-
-    if (existingIndex >= 0) {
-        saved.splice(existingIndex, 1);
-    } else if (snapshot) {
-        saved.push(snapshot);
-    }
-
-    saveBookItems(saved);
-    renderSavedBooks();
+    return toggleSavedCollectionItem("books", bookId, snapshot);
 }
 
 // Music is sourced live from the MusicBrainz API (string MBIDs), so saved
@@ -291,21 +545,11 @@ function saveMusicItems(items) {
 }
 
 function isMusicSaved(mbid) {
-    return getSavedMusicItems().some((item) => item.mbid === mbid);
+    return isCollectionItemSaved("music", mbid);
 }
 
 function toggleMusicSave(mbid, snapshot) {
-    const saved = getSavedMusicItems();
-    const existingIndex = saved.findIndex((item) => item.mbid === mbid);
-
-    if (existingIndex >= 0) {
-        saved.splice(existingIndex, 1);
-    } else if (snapshot) {
-        saved.push(snapshot);
-    }
-
-    saveMusicItems(saved);
-    renderSavedMusic();
+    return toggleSavedCollectionItem("music", mbid, snapshot);
 }
 
 // Deterministic soft gradients + initials so real MusicBrainz artists (which
@@ -390,7 +634,7 @@ function renderSavedMusic() {
     const list = document.getElementById("saved-music-list");
     if (!list) return;
 
-    const savedMusic = getSavedMusicItems();
+    const savedMusic = getSavedCollectionItems("music");
     list.innerHTML = "";
 
     if (savedMusic.length === 0) {
@@ -695,16 +939,9 @@ function createArtistResultCard(artist) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "music-action";
-    if (isMusicSaved(snapshot.mbid)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
+    configureCollectionSaveButton(saveButton, "music", snapshot.mbid);
     saveButton.addEventListener("click", () => {
-        toggleMusicSave(snapshot.mbid, snapshot);
-        saveButton.classList.toggle("saved", isMusicSaved(snapshot.mbid));
-        saveButton.textContent = isMusicSaved(snapshot.mbid) ? "Saved" : "Save";
+        void handleSavedCollectionToggle("music", snapshot.mbid, snapshot, saveButton);
     });
 
     const detailsButton = document.createElement("button");
@@ -950,10 +1187,9 @@ function renderArtistDetailShell(snapshot) {
 
     const saveButton = detailContainer.querySelector("[data-music-save]");
     if (saveButton) {
+        configureCollectionSaveButton(saveButton, "music", snapshot.mbid);
         saveButton.addEventListener("click", () => {
-            toggleMusicSave(snapshot.mbid, snapshot);
-            saveButton.classList.toggle("saved", isMusicSaved(snapshot.mbid));
-            saveButton.textContent = isMusicSaved(snapshot.mbid) ? "Saved" : "Save";
+            void handleSavedCollectionToggle("music", snapshot.mbid, snapshot, saveButton);
         });
     }
 }
@@ -1161,7 +1397,7 @@ function renderSavedArt() {
     const list = document.getElementById("saved-art-list");
     if (!list) return;
 
-    const savedArt = getSavedArtItems();
+    const savedArt = getSavedCollectionItems("art");
     list.innerHTML = "";
 
     if (savedArt.length === 0) {
@@ -1227,16 +1463,9 @@ function createArtArtistCard(summary) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "art-action";
-    if (isArtSaved(snapshot.id)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
+    configureCollectionSaveButton(saveButton, "art", snapshot.id);
     saveButton.addEventListener("click", () => {
-        toggleArtSave(snapshot.id, snapshot);
-        saveButton.classList.toggle("saved", isArtSaved(snapshot.id));
-        saveButton.textContent = isArtSaved(snapshot.id) ? "Saved" : "Save";
+        void handleSavedCollectionToggle("art", snapshot.id, snapshot, saveButton);
     });
 
     const detailsButton = document.createElement("button");
@@ -1644,16 +1873,9 @@ function renderArtDetailShell(snapshot) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "art-action";
-    if (isArtSaved(snapshot.id)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
+    configureCollectionSaveButton(saveButton, "art", snapshot.id);
     saveButton.addEventListener("click", () => {
-        toggleArtSave(snapshot.id, snapshot);
-        saveButton.classList.toggle("saved", isArtSaved(snapshot.id));
-        saveButton.textContent = isArtSaved(snapshot.id) ? "Saved" : "Save";
+        void handleSavedCollectionToggle("art", snapshot.id, snapshot, saveButton);
     });
     actions.appendChild(saveButton);
 
@@ -1847,7 +2069,7 @@ function renderSavedBooks() {
     const list = document.getElementById("saved-books-list");
     if (!list) return;
 
-    const savedBooks = getSavedBookItems();
+    const savedBooks = getSavedCollectionItems("books");
     list.innerHTML = "";
 
     if (savedBooks.length === 0) {
@@ -1933,16 +2155,9 @@ function renderBookDetail(bookItem) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "book-action";
-    if (isBookSaved(bookItem.id)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
+    configureCollectionSaveButton(saveButton, "books", bookItem.id);
     saveButton.addEventListener("click", () => {
-        toggleBookSave(bookItem.id, bookItem);
-        saveButton.classList.toggle("saved", isBookSaved(bookItem.id));
-        saveButton.textContent = isBookSaved(bookItem.id) ? "Saved" : "Save";
+        void handleSavedCollectionToggle("books", bookItem.id, bookItem, saveButton);
     });
     actions.appendChild(saveButton);
 
@@ -1997,16 +2212,9 @@ function createBookCard(bookItem) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "book-action";
-    if (isBookSaved(bookItem.id)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
+    configureCollectionSaveButton(saveButton, "books", bookItem.id);
     saveButton.addEventListener("click", () => {
-        toggleBookSave(bookItem.id, bookItem);
-        saveButton.classList.toggle("saved", isBookSaved(bookItem.id));
-        saveButton.textContent = isBookSaved(bookItem.id) ? "Saved" : "Save";
+        void handleSavedCollectionToggle("books", bookItem.id, bookItem, saveButton);
     });
 
     const detailsButton = document.createElement("button");
@@ -2751,6 +2959,7 @@ function renderMovieDetail(movie) {
 }
 
 let currentSessionUser = null;
+let authSessionResolved = !window.coucouSupabase;
 let currentAuthMode = "sign-in";
 let currentProfile = null;
 let passwordRecoveryActive = false;
@@ -3161,6 +3370,7 @@ async function ensureProfileForUser(user) {
 
 function updateProfileAuthUi(user, profile) {
     currentSessionUser = user || null;
+    authSessionResolved = true;
     currentProfile = profile || null;
 
     const name = document.getElementById("profile-display-name");
@@ -3222,6 +3432,7 @@ function updateProfileAuthUi(user, profile) {
             passwordRecoveryComplete = false;
             setProfileAuthState("");
         }
+        void loadSavedCollectionsForUser(null);
         void loadPostsFromSupabase();
         return;
     }
@@ -3253,6 +3464,7 @@ function updateProfileAuthUi(user, profile) {
                 : "Choose a username to finish your profile."
     );
     if (user) {
+        void loadSavedCollectionsForUser(user);
         void refreshPublicSocialState().catch((error) => {
             if (profileSocialState) {
                 profileSocialState.textContent = `Follower counts could not be loaded: ${error.message || "Please try again."}`;
@@ -3772,6 +3984,7 @@ function initProfileAuth() {
 
     window.coucouSupabase.auth.getSession()
         .then(async ({ data, error }) => {
+            authSessionResolved = true;
             if (error) {
                 setProfileAuthState(error.message, true);
                 return;
@@ -3781,11 +3994,14 @@ function initProfileAuth() {
             updateProfileAuthUi(user, profile);
         })
         .catch((error) => {
+            authSessionResolved = true;
             setProfileAuthState("Unable to check authentication status.", true);
             console.error("[Auth] Session check failed:", error);
         });
 
     window.coucouSupabase.auth.onAuthStateChange((event, session) => {
+        authSessionResolved = true;
+        currentSessionUser = session && session.user ? session.user : null;
         if (event === "PASSWORD_RECOVERY" && session && session.user) {
             currentSessionUser = session.user;
             showPasswordRecoveryForm("Enter a new password for your account.");
