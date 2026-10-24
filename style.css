@@ -521,8 +521,10 @@ header p {
 
 .create-post-card {
       background-color: white;
+      width: 100%;
       max-width: 500px;
       margin: 0 auto;
+      box-sizing: border-box;
       padding: 25px;
       border-radius: 25px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -898,12 +900,18 @@ header p {
 }
 
 .my-posts-feed {
+      width: min(100%, 500px);
+      min-width: 0;
+      margin: 0 auto;
       display: flex;
       flex-direction: column;
       gap: 16px;
 }
 
 .my-posts-feed .post-card {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
       background-color: #f9fdfd;
       border: 1px solid #d9edf5;
       border-radius: 18px;
@@ -1095,6 +1103,7 @@ header p {
       position: relative;
       width: 100%;
       aspect-ratio: 4 / 3;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1105,6 +1114,8 @@ header p {
 }
 
 .art-artist-photo img {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -1162,14 +1173,32 @@ header p {
 }
 
 .book-cover {
-      min-height: 220px;
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      box-sizing: border-box;
+      overflow: hidden;
       display: flex;
       align-items: flex-end;
       justify-content: flex-start;
-      padding: 18px;
       color: white;
       font-weight: 700;
       letter-spacing: 0.08em;
+      background-color: #f2e8e5;
+}
+
+.book-cover img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+}
+
+.book-cover span {
+      position: relative;
+      margin: 18px;
 }
 
 .book-cover span {
@@ -1304,12 +1333,14 @@ header p {
 }
 
 .book-cover-large {
+      position: relative;
       width: 120px;
       height: 120px;
       flex: 0 0 120px;
       box-sizing: border-box;
       overflow: hidden;
       border-radius: 18px;
+      background-color: #f2e8e5;
       display: flex;
       align-items: flex-end;
       justify-content: flex-start;
@@ -1320,9 +1351,16 @@ header p {
 }
 
 .book-cover-large img {
+      position: absolute;
+      inset: 0;
+      display: block;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
+}
+
+.book-cover-large span {
+      position: relative;
 }
 
 .book-detail-copy {
@@ -1423,8 +1461,10 @@ header p {
 }
 
 .art-work-cover {
+      position: relative;
       width: 100%;
       aspect-ratio: 1 / 1;
+      overflow: hidden;
       background: #f9fbff;
       display: flex;
       align-items: center;
@@ -1432,6 +1472,8 @@ header p {
 }
 
 .art-work-cover img {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -1534,6 +1576,7 @@ header p {
       position: relative;
       width: 120px;
       height: 120px;
+      box-sizing: border-box;
       border-radius: 20px;
       display: flex;
       align-items: flex-end;
@@ -2498,8 +2541,11 @@ header p {
 }
 
 .saved-item-poster {
+      position: relative;
       width: 46px;
       height: 68px;
+      box-sizing: border-box;
+      overflow: hidden;
       border-radius: 10px;
       display: flex;
       align-items: center;
@@ -2508,6 +2554,15 @@ header p {
       font-size: 12px;
       font-weight: 700;
       flex-shrink: 0;
+}
+
+.saved-item-poster img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
 }
 
 .saved-item-info {
@@ -2641,9 +2696,33 @@ header p {
             font-size: 14px;
       }
 
+      .book-detail-hero,
+      .art-detail-hero {
+            align-items: flex-start;
+      }
+
       .like-count,
       .comment-label {
             font-size: 12px;
+      }
+
+      @media (max-width: 600px) {
+            .book-detail-hero,
+            .art-detail-hero {
+                  flex-direction: column;
+            }
+
+            .book-detail-copy,
+            .art-detail-copy {
+                  width: 100%;
+                  min-width: 0;
+            }
+
+            .book-detail-copy h3,
+            .art-detail-copy h3 {
+                  font-size: clamp(22px, 7vw, 30px);
+                  overflow-wrap: anywhere;
+            }
       }
 }
 .profile-card {
