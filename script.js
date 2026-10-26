@@ -224,8 +224,14 @@ function getSavedCollectionItems(collectionType) {
 }
 
 function isCollectionItemSaved(collectionType, itemId) {
-    return getSavedCollectionItems(collectionType)
-        .some((item) => getCollectionItemId(collectionType, item) === String(itemId));
+    const sourceItems = currentSessionUser
+        ? remoteSavedCollections[collectionType] || []
+        : collectionType === "books"
+            ? getSavedBookItems()
+            : collectionType === "music"
+                ? getSavedMusicItems()
+                : getSavedArtItems();
+    return sourceItems.some((item) => getCollectionItemId(collectionType, item) === String(itemId));
 }
 
 function renderSavedCollection(collectionType) {
@@ -234,17 +240,27 @@ function renderSavedCollection(collectionType) {
     else if (collectionType === "art") renderSavedArt();
 }
 
-function updateSavedCollectionState(message, isError) {
-    const state = document.getElementById("saved-collections-state");
-    if (!state) return;
-    state.textContent = message || "";
-    state.classList.toggle("profile-auth-error", Boolean(isError));
+function updateSavedCollectionState(message, isError, collectionType) {
+    const stateIds = collectionType
+        ? [`${collectionType}-collection-state`, "saved-collections-state"]
+        : ["books-collection-state", "music-collection-state", "art-collection-state", "saved-collections-state"];
+    stateIds.forEach((stateId) => {
+        const state = document.getElementById(stateId);
+        if (!state) return;
+        state.textContent = message || "";
+        state.classList.toggle("profile-auth-error", Boolean(isError));
+    });
 }
 
 function refreshCollectionSaveButtons(collectionType) {
     document.querySelectorAll("[data-saved-collection-type]").forEach((button) => {
         if (button.dataset.savedCollectionType === collectionType) {
             setCollectionSaveButtonState(button, collectionType, button.dataset.savedCollectionId);
+            const isLoadingForCurrentUser = currentSessionUser &&
+                savedCollectionsLoadPromise &&
+                savedCollectionsLoadUserId === currentSessionUser.id;
+            button.disabled = Boolean(isLoadingForCurrentUser);
+            if (isLoadingForCurrentUser) button.textContent = "Loading...";
         }
     });
 }
@@ -326,14 +342,16 @@ async function loadSavedCollectionsForUser(user) {
             if (generation === savedCollectionsLoadGeneration) {
                 savedCollectionsLoadPromise = null;
                 savedCollectionsLoadUserId = null;
+                ["books", "music", "art"].forEach(refreshCollectionSaveButtons);
             }
         }
     })();
     savedCollectionsLoadPromise = loadPromise;
+    ["books", "music", "art"].forEach(refreshCollectionSaveButtons);
     return loadPromise;
 }
 
-async function toggleSavedCollectionItem(collectionType, itemId, snapshot) {
+async function toggleSavedCollectionItem(collectionType, itemId, snapshot, shouldSave) {
     if (!SAVED_COLLECTION_TYPES.has(collectionType)) {
         throw new Error("This collection type is not supported.");
     }
@@ -358,8 +376,8 @@ async function toggleSavedCollectionItem(collectionType, itemId, snapshot) {
                 : saveArtItems;
         const localItems = getLocalItems();
         const existingIndex = localItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
-        if (existingIndex >= 0) localItems.splice(existingIndex, 1);
-        else localItems.push(snapshot);
+        if (shouldSave && existingIndex < 0) localItems.push(snapshot);
+        else if (!shouldSave && existingIndex >= 0) localItems.splice(existingIndex, 1);
         saveLocalItems(localItems);
         renderSavedCollection(collectionType);
         return;
@@ -378,14 +396,10 @@ async function toggleSavedCollectionItem(collectionType, itemId, snapshot) {
 
     const remoteItems = remoteSavedCollections[collectionType];
     const remoteIndex = remoteItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
-    const localItems = collectionType === "books"
-        ? getSavedBookItems()
-        : collectionType === "music"
-            ? getSavedMusicItems()
-            : getSavedArtItems();
-    const localIndex = localItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
+    if (shouldSave && remoteIndex >= 0) return;
+    if (!shouldSave && remoteIndex < 0) return;
 
-    if (remoteIndex >= 0) {
+    if (!shouldSave) {
         const { error } = await window.coucouSupabase
             .from("saved_collections")
             .delete()
@@ -394,8 +408,6 @@ async function toggleSavedCollectionItem(collectionType, itemId, snapshot) {
             .eq("item_id", normalizedId);
         if (error) throw error;
         remoteItems.splice(remoteIndex, 1);
-    } else if (localIndex >= 0) {
-        throw new Error("This existing save is browser-only and was left unchanged. Sign out to manage it locally.");
     } else {
         const { error } = await window.coucouSupabase
             .from("saved_collections")
@@ -439,10 +451,21 @@ async function handleSavedCollectionToggle(collectionType, itemId, snapshot, but
         }
     });
     try {
-        await toggleSavedCollectionItem(collectionType, itemId, snapshot);
-        updateSavedCollectionState(currentSessionUser ? "Collection updated for your account." : "Collection updated in this browser.");
+        if (currentSessionUser && remoteSavedCollectionsUserId !== currentSessionUser.id) {
+            const loaded = await loadSavedCollectionsForUser(currentSessionUser);
+            if (!loaded) throw new Error("Your saved collection could not be loaded. Check your connection and try again.");
+        }
+        const shouldSave = !isCollectionItemSaved(collectionType, itemId);
+        await toggleSavedCollectionItem(collectionType, itemId, snapshot, shouldSave);
+        updateSavedCollectionState(
+            currentSessionUser
+                ? shouldSave ? "Saved to your account." : "Removed from your account."
+                : shouldSave ? "Saved in this browser." : "Removed from this browser.",
+            false,
+            collectionType
+        );
     } catch (error) {
-        updateSavedCollectionState(`Could not save this item: ${error.message || "Please try again."}`, true);
+        updateSavedCollectionState(`Could not update this collection: ${error.message || "Please try again."}`, true, collectionType);
         console.error("[Collections] Saved collection update failed:", error);
     } finally {
         pendingSavedCollectionKeys.delete(key);
@@ -502,7 +525,7 @@ function isArtSaved(artId) {
 }
 
 function toggleArtSave(artId, snapshot) {
-    return toggleSavedCollectionItem("art", artId, snapshot);
+    return toggleSavedCollectionItem("art", artId, snapshot, !isCollectionItemSaved("art", artId));
 }
 
 // Books are sourced live from Open Library (string work keys), so saved
@@ -525,7 +548,7 @@ function isBookSaved(bookId) {
 }
 
 function toggleBookSave(bookId, snapshot) {
-    return toggleSavedCollectionItem("books", bookId, snapshot);
+    return toggleSavedCollectionItem("books", bookId, snapshot, !isCollectionItemSaved("books", bookId));
 }
 
 // Music is sourced live from the MusicBrainz API (string MBIDs), so saved
@@ -549,7 +572,7 @@ function isMusicSaved(mbid) {
 }
 
 function toggleMusicSave(mbid, snapshot) {
-    return toggleSavedCollectionItem("music", mbid, snapshot);
+    return toggleSavedCollectionItem("music", mbid, snapshot, !isCollectionItemSaved("music", mbid));
 }
 
 // Deterministic soft gradients + initials so real MusicBrainz artists (which
