@@ -510,6 +510,82 @@ function configureCollectionSaveButton(button, collectionType, itemId) {
     setCollectionSaveButtonState(button, collectionType, itemId);
 }
 
+function createSavedItemRemoveButton(collectionType, item) {
+    const itemId = getCollectionItemId(collectionType, item);
+    const title = item.title || item.name || "item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "saved-item-remove";
+    button.textContent = "Remove";
+    button.setAttribute("aria-label", `Remove ${title} from saved ${collectionType}`);
+    button.addEventListener("click", () => {
+        void handleSavedCollectionRemove(collectionType, itemId, item, button);
+    });
+    return button;
+}
+
+async function handleSavedCollectionRemove(collectionType, itemId, item, button) {
+    const normalizedId = String(itemId);
+    const ownerId = currentSessionUser ? currentSessionUser.id : "browser";
+    const key = `${ownerId}:${collectionType}:${normalizedId}`;
+    if (!normalizedId || pendingSavedCollectionKeys.has(key)) return;
+
+    pendingSavedCollectionKeys.add(key);
+    button.disabled = true;
+    button.textContent = "Removing...";
+    try {
+        if (collectionType === "movies") {
+            toggleMovieSave(Number(normalizedId));
+        } else {
+            if (currentSessionUser && remoteSavedCollectionsUserId !== currentSessionUser.id) {
+                const loaded = await loadSavedCollectionsForUser(currentSessionUser);
+                if (!loaded) throw new Error("Your saved collection could not be loaded. Please try again.");
+            }
+
+            await toggleSavedCollectionItem(collectionType, normalizedId, item, false);
+
+            if (currentSessionUser) {
+                const getLocalItems = collectionType === "books"
+                    ? getSavedBookItems
+                    : collectionType === "music"
+                        ? getSavedMusicItems
+                        : getSavedArtItems;
+                const saveLocalItems = collectionType === "books"
+                    ? saveBookItems
+                    : collectionType === "music"
+                        ? saveMusicItems
+                        : saveArtItems;
+                const localItems = getLocalItems();
+                const localIndex = localItems.findIndex(
+                    (localItem) => getCollectionItemId(collectionType, localItem) === normalizedId
+                );
+                if (localIndex >= 0) {
+                    localItems.splice(localIndex, 1);
+                    saveLocalItems(localItems);
+                    renderSavedCollection(collectionType);
+                }
+            }
+        }
+
+        updateSavedCollectionState(
+            currentSessionUser && collectionType !== "movies"
+                ? "Removed from your account."
+                : "Removed from this browser.",
+            false,
+            collectionType
+        );
+    } catch (error) {
+        updateSavedCollectionState(`Could not remove this item: ${error.message || "Please try again."}`, true, collectionType);
+        console.error("[Collections] Saved item removal failed:", error);
+    } finally {
+        pendingSavedCollectionKeys.delete(key);
+        if (button.isConnected) {
+            button.disabled = false;
+            button.textContent = "Remove";
+        }
+    }
+}
+
 function getSavedMovieIds() {
     return getSavedItemIds(MOVIE_STORAGE_KEY);
 }
@@ -672,6 +748,7 @@ function createSavedMusicItem(item) {
     info.appendChild(details);
     thumb.appendChild(poster);
     thumb.appendChild(info);
+    thumb.appendChild(createSavedItemRemoveButton("music", safeItem));
 
     return thumb;
 }
@@ -1435,6 +1512,7 @@ function createSavedArtItem(item) {
     info.appendChild(details);
     thumb.appendChild(poster);
     thumb.appendChild(info);
+    thumb.appendChild(createSavedItemRemoveButton("art", safeItem));
 
     return thumb;
 }
@@ -2107,6 +2185,7 @@ function createSavedBookItem(item) {
     info.appendChild(details);
     thumb.appendChild(cover);
     thumb.appendChild(info);
+    thumb.appendChild(createSavedItemRemoveButton("books", safeItem));
 
     return thumb;
 }
@@ -2810,6 +2889,7 @@ function createSavedItemThumb(item) {
     info.appendChild(details);
     thumb.appendChild(poster);
     thumb.appendChild(info);
+    thumb.appendChild(createSavedItemRemoveButton("movies", safeItem));
 
     return thumb;
 }
