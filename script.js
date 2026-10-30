@@ -14,6 +14,7 @@ function activateContentSection(targetSection) {
     const target = document.getElementById(targetSection);
     if (!target) return;
 
+    if (targetSection === "my-posts") setMySpaceView("posts");
     document.querySelectorAll(".content-section").forEach((section) => {
         section.classList.toggle("active", section === target);
     });
@@ -21,6 +22,28 @@ function activateContentSection(targetSection) {
         link.classList.toggle("active", link.dataset.section === targetSection);
     });
     window.scrollTo(0, 0);
+}
+
+function setMySpaceView(view) {
+    const layout = document.querySelector(".my-space-layout");
+    const tabs = document.querySelectorAll(".my-space-tab");
+    if (!layout || (view !== "posts" && view !== "collections")) return;
+
+    layout.dataset.activeView = view;
+    tabs.forEach((tab) => {
+        const isActive = tab.dataset.mySpaceView === view;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-pressed", String(isActive));
+    });
+}
+
+function initMySpaceTabs() {
+    document.querySelectorAll(".my-space-tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+            setMySpaceView(tab.dataset.mySpaceView);
+        });
+    });
+    setMySpaceView("posts");
 }
 
 function initCollectionTabs() {
@@ -3284,17 +3307,13 @@ function initUserSearch() {
 }
 
 function renderPosts(posts) {
-    const profileFeed = document.querySelector(".profile-posts");
     const myPostsFeed = document.querySelector(".my-posts-feed");
-    if (profileFeed) profileFeed.innerHTML = '<p id="empty-post-message">Your photos and thoughts will appear here.</p>';
     if (myPostsFeed) myPostsFeed.innerHTML = '<p id="empty-my-posts-message">Your posts will appear here.</p>';
 
     if (!posts || posts.length === 0) return;
 
-    if (profileFeed) profileFeed.innerHTML = "";
     if (myPostsFeed) myPostsFeed.innerHTML = "";
     posts.forEach((post) => {
-        if (profileFeed) profileFeed.appendChild(createPostElement(post));
         if (myPostsFeed) myPostsFeed.appendChild(createPostElement(post));
     });
 }
@@ -4382,6 +4401,7 @@ async function createPost() {
 
 window.addEventListener("DOMContentLoaded", () => {
     initNavigation();
+    initMySpaceTabs();
     initCollectionTabs();
     initDetailsDelegation();
     initMusicSearch();

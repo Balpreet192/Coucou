@@ -79,7 +79,7 @@ header p {
 
 /* MAIN CONTENT */
 .main-content {
-      max-width: 900px;
+      max-width: 1180px;
       margin: 0 auto;
       padding: 0 20px 40px;
 }
@@ -568,36 +568,6 @@ header p {
       transform: translateY(0);
 }
 
-.profile-posts-card {
-      background-color: white;
-      max-width: 500px;
-      margin: 0 auto;
-      padding: 25px;
-      border-radius: 25px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.profile-posts-card h3 {
-      margin-bottom: 20px;
-      font-size: 18px;
-      color: #6b4c5a;
-}
-
-.profile-posts {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-}
-
-.profile-posts .post-card {
-      background-color: #f9fdfd;
-      border: 1px solid #d9edf5;
-      border-radius: 18px;
-      margin: 0;
-      padding: 18px 16px;
-      text-align: left;
-}
-
 /* POST CARDS */
 .post-card {
       background-color: white;
@@ -885,24 +855,84 @@ header p {
 }
 
 /* EMPTY STATE */
-#empty-post-message,
 #empty-my-posts-message {
       color: #999;
       font-style: italic;
       padding: 20px;
 }
 
-/* MY POSTS SECTION */
-.my-posts-container {
+.my-space-tabs {
       display: flex;
-      flex-direction: column;
+      gap: 8px;
+      margin: 0 0 20px;
+      border-bottom: 2px solid #e8f0f5;
+}
+
+.my-space-tab {
+      padding: 12px 16px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: #557080;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.my-space-tab:hover,
+.my-space-tab.active {
+      color: #6b4c5a;
+}
+
+.my-space-tab.active {
+      color: #d7a26d;
+      border-bottom-color: #d7a26d;
+}
+
+.my-space-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      align-items: start;
       gap: 20px;
 }
 
-.my-posts-feed {
-      width: min(100%, 500px);
+.my-space-posts-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
       min-width: 0;
+}
+
+.my-space-posts-panel .create-post-card,
+.my-space-collections-panel {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      margin: 0;
+}
+
+.my-space-collections-panel {
+      overflow: hidden;
+}
+
+.my-space-layout[data-active-view="collections"] {
+      grid-template-columns: minmax(0, 1fr);
+}
+
+.my-space-layout[data-active-view="collections"] .my-space-posts-panel {
+      display: none;
+}
+
+.my-space-layout[data-active-view="collections"] .my-space-collections-panel {
+      width: min(100%, 900px);
       margin: 0 auto;
+}
+
+.my-posts-feed {
+      width: 100%;
+      min-width: 0;
+      margin: 0;
       display: flex;
       flex-direction: column;
       gap: 16px;
@@ -2589,6 +2619,12 @@ header p {
 }
 
 /* RESPONSIVE DESIGN */
+@media (max-width: 900px) {
+      .my-space-layout {
+            grid-template-columns: minmax(0, 1fr);
+      }
+}
+
 @media (max-width: 768px) {
       header {
             padding: 15px;
@@ -2624,8 +2660,7 @@ header p {
       }
 
       .profile-card,
-      .create-post-card,
-      .profile-posts-card {
+      .create-post-card {
             max-width: 100%;
       }
 }
@@ -2673,10 +2708,33 @@ header p {
       }
 
       .profile-card,
-      .create-post-card,
-      .profile-posts-card {
+      .create-post-card {
             padding: 15px;
             border-radius: 15px;
+      }
+
+      .my-space-tabs {
+            gap: 0;
+      }
+
+      .my-space-tab {
+            flex: 1;
+            padding: 11px 8px;
+            font-size: 14px;
+      }
+
+      .my-space-collections-panel {
+            padding: 15px;
+      }
+
+      .collections-tabs {
+            flex-wrap: wrap;
+            gap: 4px;
+      }
+
+      .collection-tab {
+            flex: 1 1 calc(50% - 4px);
+            padding: 10px 6px;
       }
 
       .profile-auth-actions button,
@@ -2766,20 +2824,10 @@ header p {
       flex: 1;
 }
 
-.profile-interests,
-.profile-posts {
+.profile-interests {
       margin-top: 30px;
       padding-top: 25px;
       border-top: 1px solid #d9edf5;
-}
-
-.profile-posts .post-card {
-      background-color: #f9fdfd;
-      border: 1px solid #d9edf5;
-      border-radius: 18px;
-      margin: 20px 0;
-      padding: 18px 16px;
-      text-align: left;
 }
 
 .post-header {

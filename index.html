@@ -19,7 +19,7 @@
                      <a href="#" data-section="music" class="nav-link">Music</a>
                      <a href="#" data-section="art" class="nav-link">Art</a>
                      <a href="#" data-section="books" class="nav-link">Books</a>
-                     <a href="#" data-section="my-posts" class="nav-link">My Posts</a>
+                     <a href="#" data-section="my-posts" class="nav-link">My Posts &amp; Collections</a>
                      <a href="#" data-section="profile" class="nav-link">Profile</a>
               </nav>
        </header>
@@ -153,18 +153,56 @@
                      <div id="book-detail" class="book-detail" hidden></div>
               </section>
 
-              <!-- MY POSTS SECTION -->
+              <!-- MY POSTS AND COLLECTIONS SECTION -->
               <section id="my-posts" class="content-section">
-                     <h2>My Posts</h2>
-                     <p>Your personal thoughts and stories.</p>
-                     <div class="my-posts-container">
-                            <div class="create-post-card">
-                                   <h3>Create a Post</h3>
-                                   <textarea id="post-text" placeholder="Share a thought..."></textarea>
-                                   <button onclick="createPost()">Post</button>
+                     <h2>My Space</h2>
+                     <div class="my-space-tabs" aria-label="My posts and collections">
+                            <button type="button" class="my-space-tab active" data-my-space-view="posts" aria-pressed="true">My Posts</button>
+                            <button type="button" class="my-space-tab" data-my-space-view="collections" aria-pressed="false">My Collections</button>
+                     </div>
+                     <div class="my-space-layout" data-active-view="posts">
+                            <div class="my-space-posts-panel">
+                                   <div class="create-post-card">
+                                          <h3>Create a Post</h3>
+                                          <textarea id="post-text" placeholder="Share a thought..."></textarea>
+                                          <button type="button" onclick="createPost()">Post</button>
+                                   </div>
+                                   <div class="my-posts-feed">
+                                          <p id="empty-my-posts-message">Your posts will appear here.</p>
+                                   </div>
                             </div>
-                            <div class="my-posts-feed">
-                                   <p id="empty-my-posts-message">Your posts will appear here.</p>
+
+                            <div class="collections-card my-space-collections-panel">
+                                   <h3>My Collections</h3>
+                                   <p id="saved-collections-state" class="saved-collections-state" aria-live="polite"></p>
+                                   <div class="collections-tabs">
+                                          <button type="button" class="collection-tab active" data-collection="movies">Movies</button>
+                                          <button type="button" class="collection-tab" data-collection="music">Music</button>
+                                          <button type="button" class="collection-tab" data-collection="art">Art</button>
+                                          <button type="button" class="collection-tab" data-collection="books">Books</button>
+                                   </div>
+                                   <div class="collections-display">
+                                          <div id="collection-movies" class="collection-view active">
+                                                 <div id="saved-movies-list" class="saved-items-list">
+                                                        <p id="empty-movies-message">Your saved movies will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-music" class="collection-view">
+                                                 <div id="saved-music-list" class="saved-items-list">
+                                                        <p id="empty-music-message">Your saved music will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-art" class="collection-view">
+                                                 <div id="saved-art-list" class="saved-items-list">
+                                                        <p id="empty-art-message">Your saved art will appear here.</p>
+                                                 </div>
+                                          </div>
+                                          <div id="collection-books" class="collection-view">
+                                                 <div id="saved-books-list" class="saved-items-list">
+                                                        <p id="empty-books-message">Your saved books will appear here.</p>
+                                                 </div>
+                                          </div>
+                                   </div>
                             </div>
                      </div>
               </section>
@@ -279,46 +317,6 @@
                                    <div class="profile-settings-menu" id="profile-settings-menu" hidden>
                                           <button type="button" id="open-account-settings-btn">Account settings</button>
                                           <button type="button" id="profile-sign-out">Log out</button>
-                                   </div>
-                            </div>
-
-                            <div class="collections-card">
-                                   <h3>My Collections</h3>
-                                   <p id="saved-collections-state" class="saved-collections-state" aria-live="polite"></p>
-                                   <div class="collections-tabs">
-                                          <button class="collection-tab active" data-collection="movies">Movies</button>
-                                          <button class="collection-tab" data-collection="music">Music</button>
-                                          <button class="collection-tab" data-collection="art">Art</button>
-                                          <button class="collection-tab" data-collection="books">Books</button>
-                                   </div>
-                                   <div class="collections-display">
-                                          <div id="collection-movies" class="collection-view active">
-                                                 <div id="saved-movies-list" class="saved-items-list">
-                                                        <p id="empty-movies-message">Your saved movies will appear here.</p>
-                                                 </div>
-                                          </div>
-                                          <div id="collection-music" class="collection-view">
-                                                 <div id="saved-music-list" class="saved-items-list">
-                                                        <p id="empty-music-message">Your saved music will appear here.</p>
-                                                 </div>
-                                          </div>
-                                          <div id="collection-art" class="collection-view">
-                                                 <div id="saved-art-list" class="saved-items-list">
-                                                        <p id="empty-art-message">Your saved art will appear here.</p>
-                                                 </div>
-                                          </div>
-                                          <div id="collection-books" class="collection-view">
-                                                 <div id="saved-books-list" class="saved-items-list">
-                                                        <p id="empty-books-message">Your saved books will appear here.</p>
-                                                 </div>
-                                          </div>
-                                   </div>
-                            </div>
-
-                            <div class="profile-posts-card">
-                                   <h3>My Posts</h3>
-                                   <div class="profile-posts">
-                                          <p id="empty-post-message">Your photos and thoughts will appear here.</p>
                                    </div>
                             </div>
 
