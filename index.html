@@ -53,9 +53,15 @@
               <!-- MOVIES SECTION -->
               <section id="movies" class="content-section">
                      <h2>Movies</h2>
-                     <p>Discover, rate and talk about movies.</p>
+                     <p>Search Wikidata for films with a verified, freely reusable poster from Wikimedia Commons.</p>
+                     <form id="movie-search-form" class="movie-search-form">
+                            <label class="visually-hidden" for="movie-search-input">Search movies</label>
+                            <input type="search" id="movie-search-input" class="movie-search-input" placeholder="Search for a movie" autocomplete="off">
+                            <button type="submit" id="movie-search-button" class="movie-search-button">Search</button>
+                     </form>
+                     <p id="movie-state" class="movie-state" aria-live="polite">Search for a film to get started.</p>
+                     <p id="movies-collection-state" class="saved-collections-state" aria-live="polite"></p>
                      <div id="movie-grid" class="movie-grid" aria-live="polite"></div>
-                     <div id="movie-detail" class="movie-detail" hidden></div>
               </section>
 
               <!-- MUSIC SECTION -->
@@ -378,6 +384,7 @@
        <script src="musicbrainz.js"></script>
        <script src="artapi.js"></script>
        <script src="booksapi.js"></script>
+       <script src="movieapi.js"></script>
        <script src="script.js"></script>
 </body>
 

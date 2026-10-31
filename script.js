@@ -74,12 +74,13 @@ function initCollectionTabs() {
     });
 }
 
-const MOVIE_STORAGE_KEY = "coucouSavedMovies";
+const MOVIE_STORAGE_KEY = "coucouSavedMovieItems";
 const MUSIC_STORAGE_KEY = "coucouSavedMusic";
 const ART_STORAGE_KEY = "coucouSavedArt";
 const BOOKS_STORAGE_KEY = "coucouSavedBooks";
-const SAVED_COLLECTION_TYPES = new Set(["books", "music", "art"]);
-let remoteSavedCollections = { books: [], music: [], art: [] };
+const SAVED_COLLECTION_TYPE_LIST = ["movies", "music", "art", "books"];
+const SAVED_COLLECTION_TYPES = new Set(SAVED_COLLECTION_TYPE_LIST);
+let remoteSavedCollections = { movies: [], books: [], music: [], art: [] };
 let remoteSavedCollectionsUserId = null;
 let savedCollectionsLoadPromise = null;
 let savedCollectionsLoadUserId = null;
@@ -89,36 +90,15 @@ const pendingSavedCollectionKeys = new Set();
 // Lookup maps from card id -> full data object, kept in sync whenever a card
 // is created. Event delegation reads an id from the clicked button and looks
 // the full item up here, instead of relying on a closure over stale data.
-const movieCardData = new Map();
 const musicCardData = new Map();
 const artCardData = new Map();
 const bookCardData = new Map();
 
 // Single source of truth for wiring up "Details" buttons: every dynamic
-// card (movies, music, art, books) renders a button with class "details-btn"
+// card (music, art, books) renders a button with class "details-btn"
 // and a matching data-id, and clicks are handled via delegation on the
 // section container so newly loaded/paginated cards work with no extra wiring.
 function initDetailsDelegation() {
-    const movieSection = document.getElementById("movies");
-    if (movieSection) {
-        movieSection.addEventListener("click", (e) => {
-            const button = e.target.closest(".details-btn");
-            if (!button || !movieSection.contains(button)) return;
-
-            const id = button.dataset.id;
-            console.log("[Movies] Details button clicked, id:", id);
-
-            const movie = movieCardData.get(id);
-            if (!movie) {
-                console.warn("[Movies] No movie data found for id:", id);
-                return;
-            }
-            renderMovieDetail(movie);
-        });
-    } else {
-        console.warn("[Details] #movies section not found - movie details delegation skipped.");
-    }
-
     const musicSection = document.getElementById("music");
     if (musicSection) {
         musicSection.addEventListener("click", (e) => {
@@ -189,49 +169,28 @@ function initDetailsDelegation() {
     }
 }
 
-function getSavedItemIds(storageKey) {
-    try {
-        const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
-        return Array.isArray(saved) ? saved.map(Number) : [];
-    } catch (error) {
-        return [];
-    }
-}
-
-function saveItemIds(storageKey, itemIds) {
-    localStorage.setItem(storageKey, JSON.stringify(itemIds));
-}
-
-function isItemSaved(storageKey, itemId) {
-    return getSavedItemIds(storageKey).includes(Number(itemId));
-}
-
-function toggleItemSave(storageKey, itemId) {
-    const saved = getSavedItemIds(storageKey);
-    const numericId = Number(itemId);
-    const existingIndex = saved.indexOf(numericId);
-
-    if (existingIndex >= 0) {
-        saved.splice(existingIndex, 1);
-    } else {
-        saved.push(numericId);
-    }
-
-    saveItemIds(storageKey, saved);
-}
-
 function getCollectionItemId(collectionType, item) {
     if (!item) return "";
     const itemId = collectionType === "music" ? item.mbid : item.id;
     return itemId === undefined || itemId === null ? "" : String(itemId);
 }
 
+function getLocalSavedCollectionItems(collectionType) {
+    if (collectionType === "movies") return getSavedMovieItems();
+    if (collectionType === "books") return getSavedBookItems();
+    if (collectionType === "music") return getSavedMusicItems();
+    return getSavedArtItems();
+}
+
+function saveLocalCollectionItems(collectionType, items) {
+    if (collectionType === "movies") saveMovieItems(items);
+    else if (collectionType === "books") saveBookItems(items);
+    else if (collectionType === "music") saveMusicItems(items);
+    else saveArtItems(items);
+}
+
 function getSavedCollectionItems(collectionType) {
-    const localItems = collectionType === "books"
-        ? getSavedBookItems()
-        : collectionType === "music"
-            ? getSavedMusicItems()
-            : getSavedArtItems();
+    const localItems = getLocalSavedCollectionItems(collectionType);
     const remoteItems = remoteSavedCollections[collectionType] || [];
     const itemsById = new Map();
 
@@ -249,16 +208,13 @@ function getSavedCollectionItems(collectionType) {
 function isCollectionItemSaved(collectionType, itemId) {
     const sourceItems = currentSessionUser
         ? remoteSavedCollections[collectionType] || []
-        : collectionType === "books"
-            ? getSavedBookItems()
-            : collectionType === "music"
-                ? getSavedMusicItems()
-                : getSavedArtItems();
+        : getLocalSavedCollectionItems(collectionType);
     return sourceItems.some((item) => getCollectionItemId(collectionType, item) === String(itemId));
 }
 
 function renderSavedCollection(collectionType) {
-    if (collectionType === "books") renderSavedBooks();
+    if (collectionType === "movies") renderSavedMovies();
+    else if (collectionType === "books") renderSavedBooks();
     else if (collectionType === "music") renderSavedMusic();
     else if (collectionType === "art") renderSavedArt();
 }
@@ -266,7 +222,7 @@ function renderSavedCollection(collectionType) {
 function updateSavedCollectionState(message, isError, collectionType) {
     const stateIds = collectionType
         ? [`${collectionType}-collection-state`, "saved-collections-state"]
-        : ["books-collection-state", "music-collection-state", "art-collection-state", "saved-collections-state"];
+        : ["movies-collection-state", "books-collection-state", "music-collection-state", "art-collection-state", "saved-collections-state"];
     stateIds.forEach((stateId) => {
         const state = document.getElementById(stateId);
         if (!state) return;
@@ -291,12 +247,12 @@ function refreshCollectionSaveButtons(collectionType) {
 async function loadSavedCollectionsForUser(user) {
     if (!user) {
         savedCollectionsLoadGeneration += 1;
-        remoteSavedCollections = { books: [], music: [], art: [] };
+        remoteSavedCollections = { movies: [], books: [], music: [], art: [] };
         remoteSavedCollectionsUserId = null;
         savedCollectionsLoadPromise = null;
         savedCollectionsLoadUserId = null;
         updateSavedCollectionState("");
-        ["books", "music", "art"].forEach((type) => {
+        SAVED_COLLECTION_TYPE_LIST.forEach((type) => {
             renderSavedCollection(type);
             refreshCollectionSaveButtons(type);
         });
@@ -314,9 +270,9 @@ async function loadSavedCollectionsForUser(user) {
     }
 
     const generation = ++savedCollectionsLoadGeneration;
-    remoteSavedCollections = { books: [], music: [], art: [] };
+    remoteSavedCollections = { movies: [], books: [], music: [], art: [] };
     remoteSavedCollectionsUserId = null;
-    ["books", "music", "art"].forEach((type) => {
+    SAVED_COLLECTION_TYPE_LIST.forEach((type) => {
         renderSavedCollection(type);
         refreshCollectionSaveButtons(type);
     });
@@ -331,7 +287,7 @@ async function loadSavedCollectionsForUser(user) {
             if (error) throw error;
             if (generation !== savedCollectionsLoadGeneration) return false;
 
-            const collections = { books: [], music: [], art: [] };
+            const collections = { movies: [], books: [], music: [], art: [] };
             (data || []).forEach((row) => {
                 if (
                     SAVED_COLLECTION_TYPES.has(row.collection_type) &&
@@ -344,17 +300,17 @@ async function loadSavedCollectionsForUser(user) {
             remoteSavedCollections = collections;
             remoteSavedCollectionsUserId = user.id;
             updateSavedCollectionState("");
-            ["books", "music", "art"].forEach((type) => {
+            SAVED_COLLECTION_TYPE_LIST.forEach((type) => {
                 renderSavedCollection(type);
                 refreshCollectionSaveButtons(type);
             });
             return true;
         } catch (error) {
             if (generation === savedCollectionsLoadGeneration) {
-                remoteSavedCollections = { books: [], music: [], art: [] };
+                remoteSavedCollections = { movies: [], books: [], music: [], art: [] };
                 remoteSavedCollectionsUserId = null;
                 updateSavedCollectionState(`Could not load saved collections: ${error.message || "Please try again."}`, true);
-                ["books", "music", "art"].forEach((type) => {
+                SAVED_COLLECTION_TYPE_LIST.forEach((type) => {
                     renderSavedCollection(type);
                     refreshCollectionSaveButtons(type);
                 });
@@ -365,12 +321,12 @@ async function loadSavedCollectionsForUser(user) {
             if (generation === savedCollectionsLoadGeneration) {
                 savedCollectionsLoadPromise = null;
                 savedCollectionsLoadUserId = null;
-                ["books", "music", "art"].forEach(refreshCollectionSaveButtons);
+                SAVED_COLLECTION_TYPE_LIST.forEach(refreshCollectionSaveButtons);
             }
         }
     })();
     savedCollectionsLoadPromise = loadPromise;
-    ["books", "music", "art"].forEach(refreshCollectionSaveButtons);
+    SAVED_COLLECTION_TYPE_LIST.forEach(refreshCollectionSaveButtons);
     return loadPromise;
 }
 
@@ -387,21 +343,11 @@ async function toggleSavedCollectionItem(collectionType, itemId, snapshot, shoul
         if (window.coucouSupabase && !authSessionResolved) {
             throw new Error("Checking your account session. Please try saving again in a moment.");
         }
-        const getLocalItems = collectionType === "books"
-            ? getSavedBookItems
-            : collectionType === "music"
-                ? getSavedMusicItems
-                : getSavedArtItems;
-        const saveLocalItems = collectionType === "books"
-            ? saveBookItems
-            : collectionType === "music"
-                ? saveMusicItems
-                : saveArtItems;
-        const localItems = getLocalItems();
+        const localItems = getLocalSavedCollectionItems(collectionType);
         const existingIndex = localItems.findIndex((item) => getCollectionItemId(collectionType, item) === normalizedId);
         if (shouldSave && existingIndex < 0) localItems.push(snapshot);
         else if (!shouldSave && existingIndex >= 0) localItems.splice(existingIndex, 1);
-        saveLocalItems(localItems);
+        saveLocalCollectionItems(collectionType, localItems);
         renderSavedCollection(collectionType);
         return;
     }
@@ -534,41 +480,27 @@ async function handleSavedCollectionRemove(collectionType, itemId, item, button)
     button.disabled = true;
     button.textContent = "Removing...";
     try {
-        if (collectionType === "movies") {
-            toggleMovieSave(Number(normalizedId));
-        } else {
-            if (currentSessionUser && remoteSavedCollectionsUserId !== currentSessionUser.id) {
-                const loaded = await loadSavedCollectionsForUser(currentSessionUser);
-                if (!loaded) throw new Error("Your saved collection could not be loaded. Please try again.");
-            }
+        if (currentSessionUser && remoteSavedCollectionsUserId !== currentSessionUser.id) {
+            const loaded = await loadSavedCollectionsForUser(currentSessionUser);
+            if (!loaded) throw new Error("Your saved collection could not be loaded. Please try again.");
+        }
 
-            await toggleSavedCollectionItem(collectionType, normalizedId, item, false);
+        await toggleSavedCollectionItem(collectionType, normalizedId, item, false);
 
-            if (currentSessionUser) {
-                const getLocalItems = collectionType === "books"
-                    ? getSavedBookItems
-                    : collectionType === "music"
-                        ? getSavedMusicItems
-                        : getSavedArtItems;
-                const saveLocalItems = collectionType === "books"
-                    ? saveBookItems
-                    : collectionType === "music"
-                        ? saveMusicItems
-                        : saveArtItems;
-                const localItems = getLocalItems();
-                const localIndex = localItems.findIndex(
-                    (localItem) => getCollectionItemId(collectionType, localItem) === normalizedId
-                );
-                if (localIndex >= 0) {
-                    localItems.splice(localIndex, 1);
-                    saveLocalItems(localItems);
-                    renderSavedCollection(collectionType);
-                }
+        if (currentSessionUser) {
+            const localItems = getLocalSavedCollectionItems(collectionType);
+            const localIndex = localItems.findIndex(
+                (localItem) => getCollectionItemId(collectionType, localItem) === normalizedId
+            );
+            if (localIndex >= 0) {
+                localItems.splice(localIndex, 1);
+                saveLocalCollectionItems(collectionType, localItems);
+                renderSavedCollection(collectionType);
             }
         }
 
         updateSavedCollectionState(
-            currentSessionUser && collectionType !== "movies"
+            currentSessionUser
                 ? "Removed from your account."
                 : "Removed from this browser.",
             false,
@@ -583,29 +515,27 @@ async function handleSavedCollectionRemove(collectionType, itemId, item, button)
             button.disabled = false;
             button.textContent = "Remove";
         }
+        refreshCollectionSaveButtons(collectionType);
     }
 }
 
-function getSavedMovieIds() {
-    return getSavedItemIds(MOVIE_STORAGE_KEY);
+function getSavedMovieItems() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(MOVIE_STORAGE_KEY) || "[]");
+        return Array.isArray(saved)
+            ? saved.filter((item) => item && typeof item === "object" && typeof item.id === "string")
+            : [];
+    } catch (error) {
+        return [];
+    }
 }
 
-function saveMovieIds(movieIds) {
-    saveItemIds(MOVIE_STORAGE_KEY, movieIds);
-}
-
-function isMovieSaved(movieId) {
-    return isItemSaved(MOVIE_STORAGE_KEY, movieId);
-}
-
-function toggleMovieSave(movieId) {
-    toggleItemSave(MOVIE_STORAGE_KEY, movieId);
-    renderMovies();
-    renderSavedMovies();
+function saveMovieItems(items) {
+    localStorage.setItem(MOVIE_STORAGE_KEY, JSON.stringify(items));
 }
 
 // Art is sourced live from Wikipedia (string page-title ids), so saved art
-// is stored as full artist snapshots rather than numeric ids like Movies/Books.
+// is stored as full artist snapshots.
 function getSavedArtItems() {
     try {
         const saved = JSON.parse(localStorage.getItem(ART_STORAGE_KEY) || "[]");
@@ -2805,285 +2735,141 @@ function renderCreators() {
 }
 
 // MOVIES COLLECTION LOGIC
-const MOVIE_SAMPLE_DATA = [
-    {
-        id: 1,
-        title: "The Grand Escape",
-        year: 2024,
-        genre: "Drama",
-        rating: 8.7,
-        duration: "2h 12m",
-        description: "A quiet dreamer learns to brave the unknown and rewrite his own story.",
-        posterGradient: "linear-gradient(135deg, #8ecae6 0%, #219ebc 50%, #023047 100%)",
-        posterText: "TG"
-    },
-    {
-        id: 2,
-        title: "Velvet Night",
-        year: 2023,
-        genre: "Thriller",
-        rating: 8.2,
-        duration: "1h 49m",
-        description: "A late-night radio host is pulled into a mystery hidden beneath the city lights.",
-        posterGradient: "linear-gradient(135deg, #ffafcc 0%, #cdb4db 45%, #3a86ff 100%)",
-        posterText: "VN"
-    },
-    {
-        id: 3,
-        title: "Sunset Harbor",
-        year: 2022,
-        genre: "Romance",
-        rating: 7.9,
-        duration: "2h 04m",
-        description: "Two artists reconnect while chasing a future they never planned for.",
-        posterGradient: "linear-gradient(135deg, #ffd6a5 0%, #ff9f1c 38%, #ff6b6b 100%)",
-        posterText: "SH"
-    },
-    {
-        id: 4,
-        title: "Neon Bloom",
-        year: 2024,
-        genre: "Sci-Fi",
-        rating: 9.1,
-        duration: "2h 21m",
-        description: "In a city powered by memory, one woman must decide what to keep and what to lose.",
-        posterGradient: "linear-gradient(135deg, #a0c4ff 0%, #6a4c93 48%, #1d3557 100%)",
-        posterText: "NB"
-    },
-    {
-        id: 5,
-        title: "Paper Lanterns",
-        year: 2021,
-        genre: "Family",
-        rating: 8.4,
-        duration: "1h 38m",
-        description: "A young illustrator follows her grandmother's trail across a glowing seaside town.",
-        posterGradient: "linear-gradient(135deg, #90f1ef 0%, #7bdff2 32%, #ffc8dd 100%)",
-        posterText: "PL"
-    }
-];
+let movieSearchGeneration = 0;
 
-function createSavedItemThumb(item) {
-    const safeItem = item || {};
-    const titleText = safeItem.title || safeItem.name || "Untitled";
-    const thumb = document.createElement("div");
-    thumb.className = "saved-item-thumb";
+function setMovieState(kind, message) {
+    const state = document.getElementById("movie-state");
+    if (!state) return;
+    state.className = kind ? `movie-state movie-state-${kind}` : "movie-state";
+    state.textContent = message || "";
+}
 
-    const poster = document.createElement("div");
-    poster.className = "saved-item-poster";
-    poster.style.background = safeItem.posterGradient || safeItem.photoGradient || "linear-gradient(135deg, #d7a26d, #8ecae6)";
-    poster.textContent = safeItem.posterText || safeItem.photoText || String(titleText).slice(0, 2).toUpperCase();
+function createMovieCard(movie, savedList) {
+    const card = document.createElement("article");
+    card.className = savedList ? "saved-item-thumb saved-movie-item" : "movie-card";
+
+    const posterLink = document.createElement("a");
+    posterLink.className = savedList ? "saved-item-poster saved-movie-poster" : "movie-poster";
+    posterLink.href = movie.posterFilePageUrl;
+    posterLink.target = "_blank";
+    posterLink.rel = "noopener noreferrer";
+    posterLink.setAttribute("aria-label", `View the poster license for ${movie.title}`);
+
+    const poster = document.createElement("img");
+    poster.src = movie.posterUrl;
+    poster.alt = `${movie.title} poster`;
+    poster.loading = "lazy";
+    poster.addEventListener("error", () => {
+        card.remove();
+        setMovieState("error", "A verified poster could not be loaded. Please search again later.");
+    }, { once: true });
+    posterLink.appendChild(poster);
 
     const info = document.createElement("div");
-    info.className = "saved-item-info";
+    info.className = savedList ? "saved-item-info" : "movie-info";
 
-    const title = document.createElement("h4");
-    title.textContent = titleText;
+    const title = document.createElement(savedList ? "h4" : "h3");
+    title.className = "movie-title";
+    title.textContent = movie.title;
 
-    const details = document.createElement("p");
-    const genre = safeItem.genre || "";
-    const yearText = safeItem.year || safeItem.activeYears || safeItem.country || "";
-    details.textContent = genre && yearText ? `${genre} • ${yearText}` : (genre || yearText || "Saved item");
+    const year = document.createElement("p");
+    year.className = savedList ? "saved-movie-year" : "movie-meta";
+    year.textContent = movie.year;
+
+    const credit = document.createElement("a");
+    credit.className = savedList ? "movie-poster-credit saved-movie-credit" : "movie-poster-credit";
+    credit.href = movie.posterFilePageUrl;
+    credit.target = "_blank";
+    credit.rel = "noopener noreferrer";
+    credit.textContent = `Poster: ${movie.posterArtist || "Wikimedia Commons"} · ${movie.posterLicense}`;
+
+    const footer = document.createElement("div");
+    footer.className = savedList ? "saved-movie-footer" : "movie-footer";
+
+    if (savedList) {
+        footer.appendChild(createSavedItemRemoveButton("movies", movie));
+    } else {
+        const saveButton = document.createElement("button");
+        saveButton.type = "button";
+        saveButton.className = "movie-action";
+        configureCollectionSaveButton(saveButton, "movies", movie.id);
+        saveButton.addEventListener("click", () => {
+            void handleSavedCollectionToggle("movies", movie.id, movie, saveButton);
+        });
+        footer.appendChild(saveButton);
+    }
 
     info.appendChild(title);
-    info.appendChild(details);
-    thumb.appendChild(poster);
-    thumb.appendChild(info);
-    thumb.appendChild(createSavedItemRemoveButton("movies", safeItem));
-
-    return thumb;
+    info.appendChild(year);
+    info.appendChild(credit);
+    info.appendChild(footer);
+    card.appendChild(posterLink);
+    card.appendChild(info);
+    return card;
 }
 
 function renderSavedMovies() {
     const list = document.getElementById("saved-movies-list");
     if (!list) return;
 
-    const savedMovies = getSavedMovieIds();
-    const filteredMovies = MOVIE_SAMPLE_DATA.filter((movie) => savedMovies.includes(Number(movie.id)));
-
+    const savedMovies = getSavedCollectionItems("movies");
     list.innerHTML = "";
-
-    if (filteredMovies.length === 0) {
+    if (savedMovies.length === 0) {
         list.innerHTML = '<p id="empty-movies-message">Your saved movies will appear here.</p>';
         return;
     }
 
-    filteredMovies.forEach((movie) => {
-        list.appendChild(createSavedItemThumb(movie));
+    savedMovies.forEach((movie) => {
+        list.appendChild(createMovieCard(movie, true));
     });
 }
 
-function createMovieCard(movie) {
-    const isSaved = isMovieSaved(movie.id);
-    movieCardData.set(String(movie.id), movie);
-
-    const card = document.createElement("article");
-    card.className = "movie-card";
-    card.dataset.movieId = String(movie.id);
-
-    const poster = document.createElement("div");
-    poster.className = "movie-poster";
-    poster.style.background = movie.posterGradient || "linear-gradient(135deg, #d7a26d, #8ecae6)";
-
-    const posterText = document.createElement("span");
-    posterText.className = "movie-poster-text";
-    posterText.textContent = movie.posterText || movie.title.slice(0, 2).toUpperCase();
-    poster.appendChild(posterText);
-
-    const rating = document.createElement("div");
-    rating.className = "movie-rating";
-    rating.textContent = `★ ${Number(movie.rating || 0).toFixed(1)}`;
-    poster.appendChild(rating);
-
-    const info = document.createElement("div");
-    info.className = "movie-info";
-
-    const meta = document.createElement("div");
-    meta.className = "movie-meta";
-    meta.innerHTML = `<span>${movie.genre}</span><span>${movie.year}</span><span>${movie.duration}</span>`;
-
-    const title = document.createElement("h3");
-    title.className = "movie-title";
-    title.textContent = movie.title;
-
-    const description = document.createElement("p");
-    description.className = "movie-description";
-    description.textContent = movie.description;
-
-    const footer = document.createElement("div");
-    footer.className = "movie-footer";
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "movie-action";
-    if (isSaved) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
-
-    saveButton.addEventListener("click", () => {
-        toggleMovieSave(movie.id);
-    });
-
-    const detailsButton = document.createElement("button");
-    detailsButton.type = "button";
-    detailsButton.className = "movie-action secondary details-btn";
-    detailsButton.textContent = "Details";
-    detailsButton.dataset.id = String(movie.id);
-
-    footer.appendChild(saveButton);
-    footer.appendChild(detailsButton);
-
-    info.appendChild(meta);
-    info.appendChild(title);
-    info.appendChild(description);
-    info.appendChild(footer);
-
-    card.appendChild(poster);
-    card.appendChild(info);
-    return card;
-}
-
-function renderMovies() {
+function renderMovies(movies) {
     const movieGrid = document.getElementById("movie-grid");
     if (!movieGrid) return;
 
-    movieGrid.innerHTML = "";
-    MOVIE_SAMPLE_DATA.forEach((movie) => {
-        movieGrid.appendChild(createMovieCard(movie));
-    });
+    movieGrid.replaceChildren(...movies.map((movie) => createMovieCard(movie, false)));
 }
 
-function renderMovieDetail(movie) {
-    const detailContainer = document.getElementById("movie-detail");
+function initMovieSearch() {
+    const form = document.getElementById("movie-search-form");
+    const input = document.getElementById("movie-search-input");
+    const button = document.getElementById("movie-search-button");
     const movieGrid = document.getElementById("movie-grid");
-    if (!detailContainer) {
-        console.warn("[Movies] movie-detail container not found in the DOM.");
-        return;
-    }
-    if (!movie) {
-        console.warn("[Movies] renderMovieDetail called without a movie.");
-        return;
-    }
+    if (!form || !input || !button || !movieGrid) return;
 
-    console.log("[Movies] Rendering detail view for:", movie.title);
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const query = input.value.trim();
+        const generation = ++movieSearchGeneration;
+        movieGrid.replaceChildren();
 
-    if (movieGrid) movieGrid.style.display = "none";
-    detailContainer.hidden = false;
-    detailContainer.innerHTML = "";
+        if (!query) {
+            setMovieState("empty", "Enter a movie title to search.");
+            return;
+        }
 
-    const shell = document.createElement("div");
-    shell.className = "movie-detail-shell";
+        button.disabled = true;
+        setMovieState("loading", "Searching verified movie records and poster licenses...");
+        try {
+            const movies = await MoviesAPI.searchMovies(query);
+            if (generation !== movieSearchGeneration) return;
+            if (movies.length === 0) {
+                setMovieState("empty", "No matching films with a verified release year and reusable poster were found.");
+                return;
+            }
 
-    const backButton = document.createElement("button");
-    backButton.type = "button";
-    backButton.className = "movie-back-button";
-    backButton.textContent = "Back to movies";
-    backButton.addEventListener("click", () => {
-        detailContainer.hidden = true;
-        detailContainer.innerHTML = "";
-        if (movieGrid) movieGrid.style.display = "grid";
+            renderMovies(movies);
+            setMovieState("", "");
+        } catch (error) {
+            if (generation !== movieSearchGeneration) return;
+            console.error("[Movies] Movie catalogue search failed:", error);
+            setMovieState("error", "Movie search is unavailable right now. Please try again later.");
+        } finally {
+            if (generation === movieSearchGeneration) button.disabled = false;
+        }
     });
-
-    const hero = document.createElement("div");
-    hero.className = "movie-detail-hero";
-
-    const poster = document.createElement("div");
-    poster.className = "movie-poster-large";
-    poster.style.background = movie.posterGradient || "linear-gradient(135deg, #d7a26d, #8ecae6)";
-    poster.innerHTML = `<span>${movie.posterText || String(movie.title || "").slice(0, 2).toUpperCase()}</span>`;
-
-    const copy = document.createElement("div");
-    copy.className = "movie-detail-copy";
-    copy.innerHTML = `
-        <p class="movie-detail-kicker">${movie.genre || "Movie"}</p>
-        <h3>${movie.title}</h3>
-        <div class="movie-detail-meta">
-            <span>${movie.year || ""}</span>
-            <span>${movie.duration || ""}</span>
-            <span>★ ${Number(movie.rating || 0).toFixed(1)}</span>
-        </div>
-    `;
-
-    hero.appendChild(poster);
-    hero.appendChild(copy);
-
-    const body = document.createElement("div");
-    body.className = "movie-detail-body";
-
-    const synopsisPanel = document.createElement("div");
-    synopsisPanel.className = "movie-detail-panel";
-    synopsisPanel.innerHTML = `<h4>Synopsis</h4><p>${movie.description || "No description available yet."}</p>`;
-    body.appendChild(synopsisPanel);
-
-    const actions = document.createElement("div");
-    actions.className = "movie-detail-actions";
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "movie-action";
-    if (isMovieSaved(movie.id)) {
-        saveButton.classList.add("saved");
-        saveButton.textContent = "Saved";
-    } else {
-        saveButton.textContent = "Save";
-    }
-    saveButton.addEventListener("click", () => {
-        toggleMovieSave(movie.id);
-        saveButton.classList.toggle("saved", isMovieSaved(movie.id));
-        saveButton.textContent = isMovieSaved(movie.id) ? "Saved" : "Save";
-    });
-    actions.appendChild(saveButton);
-
-    shell.appendChild(backButton);
-    shell.appendChild(hero);
-    shell.appendChild(body);
-    shell.appendChild(actions);
-    detailContainer.appendChild(shell);
 }
-
 let currentSessionUser = null;
 let authSessionResolved = !window.coucouSupabase;
 let currentAuthMode = "sign-in";
@@ -4484,13 +4270,13 @@ window.addEventListener("DOMContentLoaded", () => {
     initMySpaceTabs();
     initCollectionTabs();
     initDetailsDelegation();
+    initMovieSearch();
     initMusicSearch();
     initArtSearch();
     initBookSearch();
     initProfileAuth();
     initUserSearch();
     renderCreators();
-    renderMovies();
     loadFeaturedBooks();
     renderSavedMovies();
     renderSavedMusic();

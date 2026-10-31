@@ -1,12 +1,12 @@
--- Additive migration for account-backed books, music, and art collections.
+-- Additive migration for account-backed movies, books, music, and art collections.
 -- Existing browser localStorage items are not read, copied, or deleted.
 --
 -- Run only after reviewing this migration in Supabase SQL Editor. It creates
 -- one new table and policies for authenticated users to access only their own
 -- saved rows. It does not modify profiles, posts, comments, or other policies.
 --
--- The table uses item_id text for Open Library work keys, MusicBrainz UUIDs,
--- and Wikipedia titles; item_data stores the existing public item snapshot.
+-- The table uses item_id text for Wikidata IDs, Open Library work keys,
+-- MusicBrainz UUIDs, and Wikipedia titles; item_data stores public item snapshots.
 -- The unique key also prevents duplicate saves for the same user/category.
 
 BEGIN;
@@ -23,7 +23,7 @@ CREATE TABLE public.saved_collections (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     collection_type text NOT NULL
-        CHECK (collection_type IN ('books', 'music', 'art')),
+        CHECK (collection_type IN ('movies', 'books', 'music', 'art')),
     item_id text NOT NULL CHECK (char_length(item_id) > 0),
     item_data jsonb NOT NULL
         CHECK (jsonb_typeof(item_data) = 'object'),
