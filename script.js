@@ -1493,6 +1493,19 @@ function createArtistPhotoElement(snapshot, className) {
 
 function createArtArtistCard(summary) {
     const snapshot = buildArtSnapshot(summary);
+    const movieDescription = /^\d{4}\b.*\bfilm\b/i.test(snapshot.description);
+    const movieTitle = /\(\d{4}\s+film\)$/i.test(snapshot.name);
+    const collectionType = movieDescription || movieTitle ? "movies" : "art";
+    const descriptionYear = snapshot.description.match(/^\d{4}/);
+    const titleYear = snapshot.name.match(/\((\d{4})\s+film\)$/i);
+    const savedSnapshot = collectionType === "movies"
+        ? {
+            ...snapshot,
+            title: snapshot.name,
+            year: (descriptionYear && descriptionYear[0]) || (titleYear && titleYear[1]) || "",
+            posterUrl: snapshot.photoUrl || ""
+        }
+        : snapshot;
     artCardData.set(snapshot.id, snapshot);
 
     const card = document.createElement("article");
@@ -1517,9 +1530,9 @@ function createArtArtistCard(summary) {
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "art-action";
-    configureCollectionSaveButton(saveButton, "art", snapshot.id);
+    configureCollectionSaveButton(saveButton, collectionType, snapshot.id);
     saveButton.addEventListener("click", () => {
-        void handleSavedCollectionToggle("art", snapshot.id, snapshot, saveButton);
+        void handleSavedCollectionToggle(collectionType, snapshot.id, savedSnapshot, saveButton);
     });
 
     const detailsButton = document.createElement("button");
@@ -2734,87 +2747,43 @@ function renderCreators() {
     });
 }
 
-// MOVIES COLLECTION LOGIC
-let movieSearchGeneration = 0;
-
-function setMovieState(kind, message) {
-    const state = document.getElementById("movie-state");
-    if (!state) return;
-    state.className = kind ? `movie-state movie-state-${kind}` : "movie-state";
-    state.textContent = message || "";
-}
-
-function addMoviePosterPlaceholder(frame) {
-    const placeholder = document.createElement("span");
-    placeholder.className = "movie-poster-placeholder";
-    placeholder.textContent = "Poster unavailable";
-    frame.appendChild(placeholder);
-}
-
-function createMovieCard(movie, savedList) {
+// Existing saved movies remain in the Movies collection.
+function createSavedMovieItem(movie) {
     const card = document.createElement("article");
-    card.className = savedList ? "saved-item-thumb saved-movie-item" : "movie-card";
+    card.className = "saved-item-thumb saved-movie-item";
 
-    const posterFrame = document.createElement("div");
-    posterFrame.className = savedList ? "saved-item-poster saved-movie-poster" : "movie-poster";
-    if (movie.posterUrl) {
-        const poster = document.createElement("img");
-        poster.src = movie.posterUrl;
-        poster.alt = `${movie.title} poster`;
-        poster.loading = "lazy";
-        poster.addEventListener("error", () => {
-            poster.remove();
-            addMoviePosterPlaceholder(posterFrame);
+    const poster = document.createElement("div");
+    poster.className = "saved-item-poster saved-movie-poster";
+    const posterUrl = movie.photoUrl || movie.posterUrl;
+    if (posterUrl) {
+        const image = document.createElement("img");
+        image.src = posterUrl;
+        image.alt = `${movie.title || movie.name || "Movie"} poster`;
+        image.loading = "lazy";
+        image.addEventListener("error", () => {
+            image.remove();
+            poster.textContent = "No image";
         }, { once: true });
-        posterFrame.appendChild(poster);
+        poster.appendChild(image);
     } else {
-        addMoviePosterPlaceholder(posterFrame);
+        poster.textContent = "No image";
     }
 
     const info = document.createElement("div");
-    info.className = savedList ? "saved-item-info" : "movie-info";
+    info.className = "saved-item-info";
 
-    const title = document.createElement(savedList ? "h4" : "h3");
-    title.className = "movie-title";
-    title.textContent = movie.title;
+    const title = document.createElement("h4");
+    title.textContent = movie.title || movie.name || "Untitled";
 
-    const year = document.createElement("p");
-    year.className = savedList ? "saved-movie-year" : "movie-meta";
-    year.textContent = movie.year;
-
-    const credit = movie.posterUrl && movie.posterFilePageUrl && movie.posterLicense
-        ? document.createElement("a")
-        : null;
-    if (credit) {
-        credit.className = savedList ? "movie-poster-credit saved-movie-credit" : "movie-poster-credit";
-        credit.href = movie.posterFilePageUrl;
-        credit.target = "_blank";
-        credit.rel = "noopener noreferrer";
-        credit.textContent = `Poster: ${movie.posterArtist || "Wikimedia Commons"} · ${movie.posterLicense}`;
-    }
-
-    const footer = document.createElement("div");
-    footer.className = savedList ? "saved-movie-footer" : "movie-footer";
-
-    if (savedList) {
-        footer.appendChild(createSavedItemRemoveButton("movies", movie));
-    } else {
-        const saveButton = document.createElement("button");
-        saveButton.type = "button";
-        saveButton.className = "movie-action";
-        configureCollectionSaveButton(saveButton, "movies", movie.id);
-        saveButton.addEventListener("click", () => {
-            void handleSavedCollectionToggle("movies", movie.id, movie, saveButton);
-        });
-        footer.appendChild(saveButton);
-    }
+    const description = document.createElement("p");
+    const yearMatch = String(movie.description || "").match(/^\d{4}/);
+    description.textContent = movie.year || (yearMatch && yearMatch[0]) || "Saved movie";
 
     info.appendChild(title);
-    info.appendChild(year);
-    if (credit) info.appendChild(credit);
-    info.appendChild(footer);
-    card.appendChild(posterFrame);
+    info.appendChild(description);
+    card.appendChild(poster);
     card.appendChild(info);
+    card.appendChild(createSavedItemRemoveButton("movies", movie));
     return card;
 }
 
@@ -2830,54 +2799,7 @@ function renderSavedMovies() {
     }
 
     savedMovies.forEach((movie) => {
-        list.appendChild(createMovieCard(movie, true));
-    });
-}
-
-function renderMovies(movies) {
-    const movieGrid = document.getElementById("movie-grid");
-    if (!movieGrid) return;
-
-    movieGrid.replaceChildren(...movies.map((movie) => createMovieCard(movie, false)));
-}
-
-function initMovieSearch() {
-    const form = document.getElementById("movie-search-form");
-    const input = document.getElementById("movie-search-input");
-    const button = document.getElementById("movie-search-button");
-    const movieGrid = document.getElementById("movie-grid");
-    if (!form || !input || !button || !movieGrid) return;
-
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const query = input.value.trim();
-        const generation = ++movieSearchGeneration;
-        movieGrid.replaceChildren();
-
-        if (!query) {
-            setMovieState("empty", "Enter a movie title to search.");
-            return;
-        }
-
-        button.disabled = true;
-        setMovieState("loading", "Searching Wikidata for matching films...");
-        try {
-            const movies = await MoviesAPI.searchMovies(query);
-            if (generation !== movieSearchGeneration) return;
-            if (movies.length === 0) {
-                setMovieState("empty", "No matching films with a known release year were found.");
-                return;
-            }
-
-            renderMovies(movies);
-            setMovieState("", "");
-        } catch (error) {
-            if (generation !== movieSearchGeneration) return;
-            console.error("[Movies] Movie catalogue search failed:", error);
-            setMovieState("error", "Movie search is unavailable right now. Please try again later.");
-        } finally {
-            if (generation === movieSearchGeneration) button.disabled = false;
-        }
+        list.appendChild(createSavedMovieItem(movie));
     });
 }
 let currentSessionUser = null;
@@ -4280,7 +4202,6 @@ window.addEventListener("DOMContentLoaded", () => {
     initMySpaceTabs();
     initCollectionTabs();
     initDetailsDelegation();
-    initMovieSearch();
     initMusicSearch();
     initArtSearch();
     initBookSearch();

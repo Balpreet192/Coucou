@@ -15,9 +15,8 @@
               <nav class="main-nav">
                      <a href="#" data-section="home" class="nav-link active">Home</a>
                      <a href="#" data-section="discover" class="nav-link">Discover</a>
-                     <a href="#" data-section="movies" class="nav-link">Movies</a>
+                     <a href="#" data-section="art" class="nav-link">Movies &amp; Art</a>
                      <a href="#" data-section="music" class="nav-link">Music</a>
-                     <a href="#" data-section="art" class="nav-link">Art</a>
                      <a href="#" data-section="books" class="nav-link">Books</a>
                      <a href="#" data-section="my-posts" class="nav-link">My Posts &amp; Collections</a>
                      <a href="#" data-section="profile" class="nav-link">Profile</a>
@@ -50,18 +49,36 @@
                      <div id="creators-grid" class="creators-grid" aria-live="polite"></div>
               </section>
 
-              <!-- MOVIES SECTION -->
-              <section id="movies" class="content-section">
-                     <h2>Movies</h2>
-                     <p>Search Wikidata for real films. Freely reusable Wikimedia Commons posters appear when available.</p>
-                     <form id="movie-search-form" class="movie-search-form">
-                            <label class="visually-hidden" for="movie-search-input">Search movies</label>
-                            <input type="search" id="movie-search-input" class="movie-search-input" placeholder="Search for a movie" autocomplete="off">
-                            <button type="submit" id="movie-search-button" class="movie-search-button">Search</button>
+              <!-- MOVIES & ART SECTION -->
+              <section id="art" class="content-section">
+                     <h2>Movies &amp; Art</h2>
+                     <p>Search for films, actors, directors, artists, and artwork.</p>
+
+                     <form id="art-search-form" class="art-search-form">
+                            <label class="visually-hidden" for="art-search-input">Search movies, people, or artwork</label>
+                            <input type="text" id="art-search-input" class="art-search-input" placeholder="Search a film, actor, director, artist, or artwork" autocomplete="off">
+                            <button type="submit" id="art-search-button" class="art-search-button">Search</button>
                      </form>
-                     <p id="movie-state" class="movie-state" aria-live="polite">Search for a film to get started.</p>
-                     <p id="movies-collection-state" class="saved-collections-state" aria-live="polite"></p>
-                     <div id="movie-grid" class="movie-grid" aria-live="polite"></div>
+
+                     <div id="art-state" class="art-state" aria-live="polite"></div>
+                     <p id="art-collection-state" class="saved-collections-state" aria-live="polite"></p>
+
+                     <p id="art-section-label" class="art-section-label"></p>
+                     <div id="art-artist-grid" class="art-artist-grid" aria-live="polite"></div>
+                     <div id="art-load-more-wrap" class="load-more-wrap" hidden>
+                            <button type="button" id="art-load-more-button" class="load-more-button">Load more artists</button>
+                     </div>
+
+                     <div id="art-discover-section" class="discover-section">
+                            <p class="art-section-label">Discover more artists</p>
+                            <div id="art-discover-state" class="art-state" aria-live="polite"></div>
+                            <div id="art-discover-grid" class="art-artist-grid" aria-live="polite"></div>
+                            <div class="load-more-wrap">
+                                   <button type="button" id="art-discover-load-more-button" class="load-more-button">Load more</button>
+                            </div>
+                     </div>
+
+                     <div id="art-detail" class="art-detail" hidden></div>
               </section>
 
               <!-- MUSIC SECTION -->
@@ -94,40 +111,6 @@
 
  <div id="music-detail" class="music-detail" hidden></div>
               </section>
-
-
-
-              <!-- ART SECTION -->
-              <section id="art" class="content-section">
-                     <h2>Art</h2>
-                     <p>Search real painters and illustrators, then explore a few of their most prominent works.</p>
-
-                     <form id="art-search-form" class="art-search-form">
-                            <input type="text" id="art-search-input" class="art-search-input" placeholder="Search an artist or painter (e.g. Vincent van Gogh)" autocomplete="off">
-                            <button type="submit" id="art-search-button" class="art-search-button">Search</button>
-                     </form>
-
-                     <div id="art-state" class="art-state" aria-live="polite"></div>
-                     <p id="art-collection-state" class="saved-collections-state" aria-live="polite"></p>
-
-                     <p id="art-section-label" class="art-section-label"></p>
-                     <div id="art-artist-grid" class="art-artist-grid" aria-live="polite"></div>
-                     <div id="art-load-more-wrap" class="load-more-wrap" hidden>
-                            <button type="button" id="art-load-more-button" class="load-more-button">Load more artists</button>
-                     </div>
-
-                     <div id="art-discover-section" class="discover-section">
-                            <p class="art-section-label">Discover more artists</p>
-                            <div id="art-discover-state" class="art-state" aria-live="polite"></div>
-                            <div id="art-discover-grid" class="art-artist-grid" aria-live="polite"></div>
-                            <div class="load-more-wrap">
-                                   <button type="button" id="art-discover-load-more-button" class="load-more-button">Load more</button>
-                            </div>
-                     </div>
-
-                     <div id="art-detail" class="art-detail" hidden></div>
-              </section>
-
               <!-- BOOKS SECTION -->
               <section id="books" class="content-section">
                      <h2>Books</h2>
@@ -384,7 +367,6 @@
        <script src="musicbrainz.js"></script>
        <script src="artapi.js"></script>
        <script src="booksapi.js"></script>
-       <script src="movieapi.js"></script>
        <script src="script.js"></script>
 </body>
 
