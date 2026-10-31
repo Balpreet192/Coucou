@@ -213,10 +213,9 @@ function isCollectionItemSaved(collectionType, itemId) {
 }
 
 function renderSavedCollection(collectionType) {
-    if (collectionType === "movies") renderSavedMovies();
+    if (collectionType === "movies" || collectionType === "art") renderSavedMoviesAndArt();
     else if (collectionType === "books") renderSavedBooks();
     else if (collectionType === "music") renderSavedMusic();
-    else if (collectionType === "art") renderSavedArt();
 }
 
 function updateSavedCollectionState(message, isError, collectionType) {
@@ -1448,17 +1447,25 @@ function createSavedArtItem(item) {
 }
 
 function renderSavedArt() {
-    const list = document.getElementById("saved-art-list");
+    renderSavedMoviesAndArt();
+}
+
+function renderSavedMoviesAndArt() {
+    const list = document.getElementById("saved-movies-art-list");
     if (!list) return;
 
+    const savedMovies = getSavedCollectionItems("movies");
     const savedArt = getSavedCollectionItems("art");
     list.innerHTML = "";
 
-    if (savedArt.length === 0) {
-        list.innerHTML = '<p id="empty-art-message">Your saved art will appear here.</p>';
+    if (savedMovies.length === 0 && savedArt.length === 0) {
+        list.innerHTML = '<p id="empty-movies-art-message">Your saved movies and art will appear here.</p>';
         return;
     }
 
+    savedMovies.forEach((movie) => {
+        list.appendChild(createSavedMovieItem(movie));
+    });
     savedArt.forEach((artist) => {
         list.appendChild(createSavedArtItem(artist));
     });
@@ -2788,19 +2795,7 @@ function createSavedMovieItem(movie) {
 }
 
 function renderSavedMovies() {
-    const list = document.getElementById("saved-movies-list");
-    if (!list) return;
-
-    const savedMovies = getSavedCollectionItems("movies");
-    list.innerHTML = "";
-    if (savedMovies.length === 0) {
-        list.innerHTML = '<p id="empty-movies-message">Your saved movies will appear here.</p>';
-        return;
-    }
-
-    savedMovies.forEach((movie) => {
-        list.appendChild(createSavedMovieItem(movie));
-    });
+    renderSavedMoviesAndArt();
 }
 let currentSessionUser = null;
 let authSessionResolved = !window.coucouSupabase;
@@ -4209,9 +4204,8 @@ window.addEventListener("DOMContentLoaded", () => {
     initUserSearch();
     renderCreators();
     loadFeaturedBooks();
-    renderSavedMovies();
+    renderSavedMoviesAndArt();
     renderSavedMusic();
-    renderSavedArt();
     renderSavedBooks();
     void loadPostsFromSupabase();
 });
