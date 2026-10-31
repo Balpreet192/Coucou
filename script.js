@@ -2744,26 +2744,32 @@ function setMovieState(kind, message) {
     state.textContent = message || "";
 }
 
+function addMoviePosterPlaceholder(frame) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "movie-poster-placeholder";
+    placeholder.textContent = "Poster unavailable";
+    frame.appendChild(placeholder);
+}
+
 function createMovieCard(movie, savedList) {
     const card = document.createElement("article");
     card.className = savedList ? "saved-item-thumb saved-movie-item" : "movie-card";
 
-    const posterLink = document.createElement("a");
-    posterLink.className = savedList ? "saved-item-poster saved-movie-poster" : "movie-poster";
-    posterLink.href = movie.posterFilePageUrl;
-    posterLink.target = "_blank";
-    posterLink.rel = "noopener noreferrer";
-    posterLink.setAttribute("aria-label", `View the poster license for ${movie.title}`);
-
-    const poster = document.createElement("img");
-    poster.src = movie.posterUrl;
-    poster.alt = `${movie.title} poster`;
-    poster.loading = "lazy";
-    poster.addEventListener("error", () => {
-        card.remove();
-        setMovieState("error", "A verified poster could not be loaded. Please search again later.");
-    }, { once: true });
-    posterLink.appendChild(poster);
+    const posterFrame = document.createElement("div");
+    posterFrame.className = savedList ? "saved-item-poster saved-movie-poster" : "movie-poster";
+    if (movie.posterUrl) {
+        const poster = document.createElement("img");
+        poster.src = movie.posterUrl;
+        poster.alt = `${movie.title} poster`;
+        poster.loading = "lazy";
+        poster.addEventListener("error", () => {
+            poster.remove();
+            addMoviePosterPlaceholder(posterFrame);
+        }, { once: true });
+        posterFrame.appendChild(poster);
+    } else {
+        addMoviePosterPlaceholder(posterFrame);
+    }
 
     const info = document.createElement("div");
     info.className = savedList ? "saved-item-info" : "movie-info";
@@ -2776,12 +2782,16 @@ function createMovieCard(movie, savedList) {
     year.className = savedList ? "saved-movie-year" : "movie-meta";
     year.textContent = movie.year;
 
-    const credit = document.createElement("a");
-    credit.className = savedList ? "movie-poster-credit saved-movie-credit" : "movie-poster-credit";
-    credit.href = movie.posterFilePageUrl;
-    credit.target = "_blank";
-    credit.rel = "noopener noreferrer";
-    credit.textContent = `Poster: ${movie.posterArtist || "Wikimedia Commons"} · ${movie.posterLicense}`;
+    const credit = movie.posterUrl && movie.posterFilePageUrl && movie.posterLicense
+        ? document.createElement("a")
+        : null;
+    if (credit) {
+        credit.className = savedList ? "movie-poster-credit saved-movie-credit" : "movie-poster-credit";
+        credit.href = movie.posterFilePageUrl;
+        credit.target = "_blank";
+        credit.rel = "noopener noreferrer";
+        credit.textContent = `Poster: ${movie.posterArtist || "Wikimedia Commons"} · ${movie.posterLicense}`;
+    }
 
     const footer = document.createElement("div");
     footer.className = savedList ? "saved-movie-footer" : "movie-footer";
@@ -2801,9 +2811,9 @@ function createMovieCard(movie, savedList) {
 
     info.appendChild(title);
     info.appendChild(year);
-    info.appendChild(credit);
+    if (credit) info.appendChild(credit);
     info.appendChild(footer);
-    card.appendChild(posterLink);
+    card.appendChild(posterFrame);
     card.appendChild(info);
     return card;
 }
@@ -2850,12 +2860,12 @@ function initMovieSearch() {
         }
 
         button.disabled = true;
-        setMovieState("loading", "Searching verified movie records and poster licenses...");
+        setMovieState("loading", "Searching Wikidata for matching films...");
         try {
             const movies = await MoviesAPI.searchMovies(query);
             if (generation !== movieSearchGeneration) return;
             if (movies.length === 0) {
-                setMovieState("empty", "No matching films with a verified release year and reusable poster were found.");
+                setMovieState("empty", "No matching films with a known release year were found.");
                 return;
             }
 

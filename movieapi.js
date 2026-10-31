@@ -6,7 +6,7 @@ const MoviesAPI = (() => {
     const WIKIDATA_API = "https://www.wikidata.org/w/api.php";
     const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
     const FILM_CLASS_ID = "Q11424";
-    const MAX_SEARCH_CANDIDATES = 30;
+    const MAX_SEARCH_CANDIDATES = 50;
 
     async function fetchJson(url) {
         const response = await fetch(url, {
@@ -93,12 +93,13 @@ const MoviesAPI = (() => {
                     .some((instance) => instance.id === FILM_CLASS_ID);
                 const year = getYear(getClaimValues(entity.claims, "P577")[0] &&
                     getClaimValues(entity.claims, "P577")[0].time);
-                const posterFile = getClaimValues(entity.claims, "P3383")[0];
+                const posterFile = getClaimValues(entity.claims, "P3383")
+                    .find((file) => typeof file === "string");
                 const title = entity.labels && entity.labels.en
                     ? entity.labels.en.value
                     : result.label;
 
-                if (!isFilm || !title || !year || typeof posterFile !== "string") return null;
+                if (!isFilm || !title || !year) return null;
                 return {
                     id: result.id,
                     title,
@@ -109,9 +110,14 @@ const MoviesAPI = (() => {
             .filter(Boolean);
         if (candidates.length === 0) return [];
 
+        const posterCandidates = candidates.filter((movie) => movie.posterFile);
+        if (posterCandidates.length === 0) {
+            return candidates.slice(0, Math.max(1, Number(limit) || 12));
+        }
+
         const commonsParams = new URLSearchParams({
             action: "query",
-            titles: candidates.map((movie) => `File:${movie.posterFile}`).join("|"),
+            titles: posterCandidates.map((movie) => `File:${movie.posterFile}`).join("|"),
             prop: "imageinfo",
             iiprop: "url|extmetadata",
             iiurlwidth: "500",
@@ -119,14 +125,20 @@ const MoviesAPI = (() => {
             formatversion: "2",
             origin: "*"
         });
-        const commonsData = await fetchJson(`${COMMONS_API}?${commonsParams}`);
+        let commonsData;
+        try {
+            commonsData = await fetchJson(`${COMMONS_API}?${commonsParams}`);
+        } catch (error) {
+            console.warn("[Movies] Commons poster lookup failed; showing film records without posters:", error.message);
+            return candidates.slice(0, Math.max(1, Number(limit) || 12));
+        }
         const filePages = new Map(
             (commonsData.query && Array.isArray(commonsData.query.pages)
                 ? commonsData.query.pages
                 : []).map((page) => [normalizeFileTitle(page.title.replace(/^File:/i, "")), page])
         );
 
-        return candidates
+        const moviesWithPosters = new Map(posterCandidates
             .map((movie) => {
                 const page = filePages.get(normalizeFileTitle(movie.posterFile));
                 const imageInfo = page && Array.isArray(page.imageinfo) ? page.imageinfo[0] : null;
@@ -137,15 +149,17 @@ const MoviesAPI = (() => {
                 if (!hasReusableLicense(license)) return null;
                 if (/^cc by/i.test(license) && !artist) return null;
 
-                return {
-                    ...movie,
+                return [movie.id, {
                     posterUrl: imageInfo.thumburl,
                     posterFilePageUrl: `https://commons.wikimedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, "_"))}`,
                     posterArtist: artist,
                     posterLicense: license
-                };
+                }];
             })
-            .filter(Boolean)
+            .filter(Boolean));
+
+        return candidates
+            .map((movie) => ({ ...movie, ...(moviesWithPosters.get(movie.id) || {}) }))
             .slice(0, Math.max(1, Number(limit) || 12));
     }
 
