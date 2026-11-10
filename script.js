@@ -3393,7 +3393,7 @@ async function submitProfileAuth(action) {
                   email,
                   password,
                   options: {
-                      emailRedirectTo: "https://balpreet192.github.io/Coucou/",
+                      emailRedirectTo: window.COUCOU_AUTH_REDIRECT_URL || "https://balpreet192.github.io/Coucou/",
                       data: {
                           username,
                           age_confirmed: true,
@@ -3494,7 +3494,7 @@ function initPasswordRecoveryForms() {
             try {
                 const { error } = await window.coucouSupabase.auth.resetPasswordForEmail(
                     emailInput.value.trim(),
-                    { redirectTo: "https://balpreet192.github.io/Coucou/" }
+                    { redirectTo: window.COUCOU_AUTH_REDIRECT_URL || "https://balpreet192.github.io/Coucou/" }
                 );
                 if (error) {
                     setProfileAuthState("We could not submit the reset request right now. Please try again later.", true);
@@ -3837,8 +3837,10 @@ function initProfileAuth() {
     window.coucouSupabase.auth.onAuthStateChange((event, session) => {
         authSessionResolved = true;
         currentSessionUser = session && session.user ? session.user : null;
-        if (event === "PASSWORD_RECOVERY" && session && session.user) {
+        const nativePasswordRecovery = window.COUCOU_PASSWORD_RECOVERY_PENDING && event === "SIGNED_IN";
+        if ((event === "PASSWORD_RECOVERY" || nativePasswordRecovery) && session && session.user) {
             currentSessionUser = session.user;
+            window.COUCOU_PASSWORD_RECOVERY_PENDING = false;
             showPasswordRecoveryForm("Enter a new password for your account.");
         } else if (event === "PASSWORD_RECOVERY") {
             passwordRecoveryInvalid = true;

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#e8f7ff"/>
+  <g transform="translate(814 770) scale(1.08)">
+    <rect width="1024" height="1024" rx="240" fill="#d7a26d"/>
+    <path d="M690 290a270 270 0 1 0 0 444" fill="none" stroke="#6b4c5a" stroke-width="86" stroke-linecap="round"/>
+    <circle cx="510" cy="448" r="22" fill="#fff"/>
+    <circle cx="510" cy="512" r="22" fill="#fff"/>
+    <circle cx="510" cy="576" r="22" fill="#fff"/>
+  </g>
+  <text x="1366" y="2030" text-anchor="middle" fill="#6b4c5a" font-family="Arial, sans-serif" font-size="190" font-weight="700">Coucou</text>
+</svg>
