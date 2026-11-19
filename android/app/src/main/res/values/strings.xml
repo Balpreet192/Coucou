@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Coucou</string>
+    <string name="title_activity_main">Coucou</string>
+    <string name="package_name">com.balpreet192.coucou</string>
+    <string name="custom_url_scheme">com.balpreet192.coucou</string>
+</resources>
