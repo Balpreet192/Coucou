@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 const AUTH_CALLBACK = "coucou://auth/callback";
 
@@ -84,6 +85,33 @@ async function handleAuthUrl(rawUrl) {
   showAuthError("The callback did not contain a valid session.");
 }
 
+async function photoToFile(photo) {
+  if (!photo.webPath) throw new Error("The selected photo could not be opened.");
+  const response = await fetch(photo.webPath);
+  if (!response.ok) throw new Error("The selected photo could not be read.");
+  const blob = await response.blob();
+  const type = blob.type || `image/${photo.format || "jpeg"}`;
+  const extension = type.split("/")[1].replace("jpeg", "jpg");
+  return new File([blob], `coucou-${Date.now()}.${extension}`, { type });
+}
+
+window.coucouCamera = {
+  async capturePhoto() {
+    const photo = await Camera.getPhoto({
+      quality: 85,
+      allowEditing: false,
+      resultType: CameraResultType.Uri,
+      source: CameraSource.Camera,
+      correctOrientation: true
+    });
+    return photoToFile(photo);
+  },
+  async pickImages() {
+    const result = await Camera.pickImages({ quality: 85, limit: 5 });
+    return Promise.all(result.photos.map(photoToFile));
+  }
+};
+
 if (Capacitor.isNativePlatform()) {
   window.COUCOU_AUTH_REDIRECT_URL = AUTH_CALLBACK;
 
@@ -98,6 +126,21 @@ if (Capacitor.isNativePlatform()) {
     return handleAuthUrl(url).catch((error) => showAuthError(error.message || String(error)));
   }).catch((error) => {
     console.error("[Coucou] Could not register the auth link handler:", error);
+  });
+
+  void App.addListener("appRestoredResult", (result) => {
+    if (result.pluginId !== "Camera" || result.methodName !== "getPhoto") return;
+    if (!result.success || !result.data) {
+      window.dispatchEvent(new CustomEvent("coucou-camera-restored-error", {
+        detail: result.error || { message: "Camera capture did not complete." }
+      }));
+      return;
+    }
+    void photoToFile(result.data)
+      .then((file) => window.dispatchEvent(new CustomEvent("coucou-camera-restored", { detail: file })))
+      .catch((error) => window.dispatchEvent(new CustomEvent("coucou-camera-restored-error", { detail: error })));
+  }).catch((error) => {
+    console.error("[Coucou] Could not register the restored camera result handler:", error);
   });
 
   document.addEventListener("DOMContentLoaded", () => {

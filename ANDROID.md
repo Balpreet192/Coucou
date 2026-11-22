@@ -54,7 +54,11 @@ After changing any website source files, return to the repository root and run `
 
 ## Permissions and release preparation
 
-The app needs network access for Supabase, the existing APIs, and remote artwork. Capacitor's Android template supplies the standard `INTERNET` permission. No camera, microphone, contacts, or location permission is added because the current website does not use those device features.
+The app needs network access for Supabase, the existing APIs, and remote artwork. Capacitor's Android template supplies the standard `INTERNET` permission. No microphone, contacts, or location permission is added.
+
+The in-app photo flow uses `@capacitor/camera`: the system camera intent captures one photo, and the Android Photo Picker selects multiple gallery images. These system pickers do not require broad storage permissions or saving photos back to the device. The native bridge converts each selection to a previewable file before upload. Camera capture errors and permission/picker cancellations are shown in the post composer; `appRestoredResult` handles a camera result if Android recreates the app while the camera is open.
+
+Posts and signed-in collections are stored in Supabase for cross-device sync. Unsigned guest collection edits remain in memory for the current session; legacy browser collection snapshots are copied to the signed-in account on next login and cleared from that browser only after all Supabase inserts succeed.
 
 The debug APK is for testing only. Before a Play Store release, set a permanent unique `appId`, configure a verified HTTPS app link, review the generated Android SDK/target settings against current Play requirements, create and securely store a release signing key, build a signed Android App Bundle (`.aab`), and complete Play Console privacy/data-safety and store-listing requirements. Never commit signing keys or passwords.
 

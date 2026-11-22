@@ -80,6 +80,13 @@ const ART_STORAGE_KEY = "coucouSavedArt";
 const BOOKS_STORAGE_KEY = "coucouSavedBooks";
 const SAVED_COLLECTION_TYPE_LIST = ["movies", "music", "art", "books"];
 const SAVED_COLLECTION_TYPES = new Set(SAVED_COLLECTION_TYPE_LIST);
+const SAVED_COLLECTION_STORAGE_KEYS = {
+    movies: MOVIE_STORAGE_KEY,
+    music: MUSIC_STORAGE_KEY,
+    art: ART_STORAGE_KEY,
+    books: BOOKS_STORAGE_KEY
+};
+const guestSavedCollections = { movies: null, music: null, art: null, books: null };
 let remoteSavedCollections = { movies: [], books: [], music: [], art: [] };
 let remoteSavedCollectionsUserId = null;
 let savedCollectionsLoadPromise = null;
@@ -218,6 +225,66 @@ function renderSavedCollection(collectionType) {
     else if (collectionType === "music") renderSavedMusic();
 }
 
+function getGuestCollectionItems(collectionType, isValidItem) {
+    if (guestSavedCollections[collectionType] === null) {
+        let saved = [];
+        try {
+            saved = JSON.parse(localStorage.getItem(SAVED_COLLECTION_STORAGE_KEYS[collectionType]) || "[]");
+        } catch (error) {
+            console.warn("[Collections] Legacy browser collection data could not be read:", error);
+        }
+        guestSavedCollections[collectionType] = Array.isArray(saved) ? saved.filter(isValidItem) : [];
+    }
+    return guestSavedCollections[collectionType];
+}
+
+function setGuestCollectionItems(collectionType, items) {
+    guestSavedCollections[collectionType] = items;
+}
+
+async function migrateGuestCollectionsToSupabase(user) {
+    if (!currentSessionUser || currentSessionUser.id !== user.id) {
+        throw new Error("Your account changed before guest collections could be synced.");
+    }
+    const pendingRows = [];
+    SAVED_COLLECTION_TYPE_LIST.forEach((collectionType) => {
+        getLocalSavedCollectionItems(collectionType).forEach((item) => {
+            const itemId = getCollectionItemId(collectionType, item);
+            if (itemId) {
+                pendingRows.push({
+                    user_id: user.id,
+                    collection_type: collectionType,
+                    item_id: itemId,
+                    item_data: item
+                });
+            }
+        });
+    });
+    if (!pendingRows.length) return;
+
+    for (const row of pendingRows) {
+        if (!currentSessionUser || currentSessionUser.id !== user.id) {
+            throw new Error("Your account changed before guest collections could be synced.");
+        }
+        const { error } = await window.coucouSupabase
+            .from("saved_collections")
+            .insert(row);
+        if (error && error.code !== "23505") throw error;
+    }
+
+    if (!currentSessionUser || currentSessionUser.id !== user.id) {
+        throw new Error("Your account changed before guest collections could be synced.");
+    }
+    SAVED_COLLECTION_TYPE_LIST.forEach((collectionType) => {
+        setGuestCollectionItems(collectionType, []);
+        try {
+            localStorage.removeItem(SAVED_COLLECTION_STORAGE_KEYS[collectionType]);
+        } catch (error) {
+            console.warn("[Collections] Synced legacy collection data could not be cleared from this browser:", error);
+        }
+    });
+}
+
 function updateSavedCollectionState(message, isError, collectionType) {
     const stateIds = collectionType
         ? [`${collectionType}-collection-state`, "saved-collections-state"]
@@ -279,6 +346,7 @@ async function loadSavedCollectionsForUser(user) {
     updateSavedCollectionState("Loading your saved collections...");
     const loadPromise = (async () => {
         try {
+            await migrateGuestCollectionsToSupabase(user);
             const { data, error } = await window.coucouSupabase
                 .from("saved_collections")
                 .select("collection_type, item_id, item_data")
@@ -428,7 +496,7 @@ async function handleSavedCollectionToggle(collectionType, itemId, snapshot, but
         updateSavedCollectionState(
             currentSessionUser
                 ? shouldSave ? "Saved to your account." : "Removed from your account."
-                : shouldSave ? "Saved in this browser." : "Removed from this browser.",
+                : shouldSave ? "Saved for this session." : "Removed from this session.",
             false,
             collectionType
         );
@@ -501,7 +569,7 @@ async function handleSavedCollectionRemove(collectionType, itemId, item, button)
         updateSavedCollectionState(
             currentSessionUser
                 ? "Removed from your account."
-                : "Removed from this browser.",
+                : "Removed from this session.",
             false,
             collectionType
         );
@@ -519,33 +587,24 @@ async function handleSavedCollectionRemove(collectionType, itemId, item, button)
 }
 
 function getSavedMovieItems() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(MOVIE_STORAGE_KEY) || "[]");
-        return Array.isArray(saved)
-            ? saved.filter((item) => item && typeof item === "object" && typeof item.id === "string")
-            : [];
-    } catch (error) {
-        return [];
-    }
+    return getGuestCollectionItems(
+        "movies",
+        (item) => item && typeof item === "object" && typeof item.id === "string"
+    );
 }
 
 function saveMovieItems(items) {
-    localStorage.setItem(MOVIE_STORAGE_KEY, JSON.stringify(items));
+    setGuestCollectionItems("movies", items);
 }
 
 // Art is sourced live from Wikipedia (string page-title ids), so saved art
 // is stored as full artist snapshots.
 function getSavedArtItems() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(ART_STORAGE_KEY) || "[]");
-        return Array.isArray(saved) ? saved : [];
-    } catch (error) {
-        return [];
-    }
+    return getGuestCollectionItems("art", (item) => item && typeof item === "object");
 }
 
 function saveArtItems(items) {
-    localStorage.setItem(ART_STORAGE_KEY, JSON.stringify(items));
+    setGuestCollectionItems("art", items);
 }
 
 function isArtSaved(artId) {
@@ -559,16 +618,11 @@ function toggleArtSave(artId, snapshot) {
 // Books are sourced live from Open Library (string work keys), so saved
 // books are stored as full snapshots rather than the old numeric ids.
 function getSavedBookItems() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(BOOKS_STORAGE_KEY) || "[]");
-        return Array.isArray(saved) ? saved : [];
-    } catch (error) {
-        return [];
-    }
+    return getGuestCollectionItems("books", (item) => item && typeof item === "object");
 }
 
 function saveBookItems(items) {
-    localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(items));
+    setGuestCollectionItems("books", items);
 }
 
 function isBookSaved(bookId) {
@@ -583,16 +637,11 @@ function toggleBookSave(bookId, snapshot) {
 // music is stored as full artist snapshots rather than numeric ids like the
 // other sections.
 function getSavedMusicItems() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(MUSIC_STORAGE_KEY) || "[]");
-        return Array.isArray(saved) ? saved : [];
-    } catch (error) {
-        return [];
-    }
+    return getGuestCollectionItems("music", (item) => item && typeof item === "object");
 }
 
 function saveMusicItems(items) {
-    localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(items));
+    setGuestCollectionItems("music", items);
 }
 
 function isMusicSaved(mbid) {
@@ -2600,158 +2649,105 @@ function initBookSearch() {
 
 
 // DISCOVER CREATORS LOGIC
-const CREATOR_SAMPLE_DATA = [
-    {
-        id: 1,
-        name: "Luna Writes",
-        handle: "@lunawritess",
-        bio: "Storyteller & book lover. Coffee, words, and midnight thoughts.",
-        avatar: "LW",
-        followers: 2840,
-        niche: "Books & Writing"
-    },
-    {
-        id: 2,
-        name: "Pixel Dreams",
-        handle: "@pixeldreamsart",
-        bio: "Digital artist exploring abstract worlds. 3D & animation enthusiast.",
-        avatar: "PD",
-        followers: 4156,
-        niche: "Digital Art"
-    },
-    {
-        id: 3,
-        name: "Melody Heart",
-        handle: "@melodyheartmusic",
-        bio: "Music curator. Always hunting for fresh sounds and hidden gems.",
-        avatar: "MH",
-        followers: 3421,
-        niche: "Music Discovery"
-    },
-    {
-        id: 4,
-        name: "Reel Talk",
-        handle: "@reeltalkreviews",
-        bio: "Film critic with opinions. From indie to blockbusters, I watch it all.",
-        avatar: "RT",
-        followers: 5789,
-        niche: "Film Criticism"
-    },
-    {
-        id: 5,
-        name: "Canvas Seeker",
-        handle: "@canvasseeker",
-        bio: "Gallery explorer and contemporary art enthusiast. Finding beauty everywhere.",
-        avatar: "CS",
-        followers: 2109,
-        niche: "Contemporary Art"
-    },
-    {
-        id: 6,
-        name: "Studio Mind",
-        handle: "@studiominddev",
-        bio: "Creative thinker & multi-disciplinary artist. Blending all the things.",
-        avatar: "SM",
-        followers: 3654,
-        niche: "Mixed Media"
-    }
-];
+let discoverProfiles = [];
 
-const FOLLOWED_CREATORS_KEY = "coucouFollowedCreators";
-
-function getFollowedCreatorIds() {
-    try {
-        const followed = JSON.parse(localStorage.getItem(FOLLOWED_CREATORS_KEY) || "[]");
-        return Array.isArray(followed) ? followed.map(Number) : [];
-    } catch (error) {
-        return [];
-    }
-}
-
-function saveFollowedCreatorIds(creatorIds) {
-    localStorage.setItem(FOLLOWED_CREATORS_KEY, JSON.stringify(creatorIds));
-}
-
-function isCreatorFollowed(creatorId) {
-    return getFollowedCreatorIds().includes(Number(creatorId));
-}
-
-function toggleCreatorFollow(creatorId) {
-    const followed = getFollowedCreatorIds();
-    const numericId = Number(creatorId);
-    const existingIndex = followed.indexOf(numericId);
-
-    if (existingIndex >= 0) {
-        followed.splice(existingIndex, 1);
-    } else {
-        followed.push(numericId);
-    }
-
-    saveFollowedCreatorIds(followed);
-    renderCreators();
-}
-
-function createCreatorCard(creator) {
+async function createCreatorCard(profile) {
     const card = document.createElement("article");
-    card.className = "creator-card";
+    card.className = "creator-card public-user-card";
 
-    const avatar = document.createElement("div");
-    avatar.className = "creator-avatar";
-    avatar.textContent = creator.avatar;
+    if (profile.avatar_path) {
+        const avatar = document.createElement("img");
+        avatar.className = "public-user-avatar";
+        avatar.alt = "";
+        if (profile.avatar_url) {
+            avatar.src = profile.avatar_url;
+            card.appendChild(avatar);
+        }
+    }
 
-    const info = document.createElement("div");
-    info.className = "creator-info";
-
-    const name = document.createElement("h3");
-    name.className = "creator-name";
-    name.textContent = creator.name;
-
-    const handle = document.createElement("p");
-    handle.className = "creator-handle";
-    handle.textContent = creator.handle;
+    const heading = document.createElement("h4");
+    heading.textContent = profile.username ? `@${profile.username}` : "Coucou member";
+    card.appendChild(heading);
 
     const bio = document.createElement("p");
-    bio.className = "creator-bio";
-    bio.textContent = creator.bio;
+    bio.className = "public-user-bio";
+    bio.textContent = profile.bio || "";
+    if (profile.bio) card.appendChild(bio);
 
-    const niche = document.createElement("span");
-    niche.className = "creator-niche";
-    niche.textContent = creator.niche;
+    const state = publicSocialState.get(profile.public_id);
+    const counts = document.createElement("p");
+    counts.className = "public-user-counts";
+    counts.textContent = `${state ? state.followers_count : 0} followers · ${state ? state.following_count : 0} following`;
+    card.appendChild(counts);
 
-    const followers = document.createElement("p");
-    followers.className = "creator-followers";
-    followers.textContent = `${creator.followers.toLocaleString()} followers`;
+    const viewButton = document.createElement("button");
+    viewButton.type = "button";
+    viewButton.dataset.userAction = "view";
+    viewButton.dataset.publicId = profile.public_id;
+    viewButton.textContent = "View Profile";
+    card.appendChild(viewButton);
 
-    const button = document.createElement("button");
-    button.className = "creator-follow-button";
-    const isFollowed = isCreatorFollowed(creator.id);
-    button.textContent = isFollowed ? "Following" : "Follow";
-    button.classList.toggle("following", isFollowed);
-    button.addEventListener("click", () => {
-        toggleCreatorFollow(creator.id);
-    });
-
-    info.appendChild(name);
-    info.appendChild(handle);
-    info.appendChild(bio);
-    info.appendChild(niche);
-    info.appendChild(followers);
-    info.appendChild(button);
-
-    card.appendChild(avatar);
-    card.appendChild(info);
-
+    if (currentSessionUser && profile.public_id !== (currentProfile && currentProfile.public_id)) {
+        const followButton = document.createElement("button");
+        followButton.type = "button";
+        followButton.dataset.userAction = "follow";
+        followButton.dataset.publicId = profile.public_id;
+        followButton.setAttribute("aria-pressed", String(Boolean(state && state.is_following)));
+        followButton.textContent = getFollowButtonLabel(state);
+        card.appendChild(followButton);
+    }
     return card;
 }
 
-function renderCreators() {
+async function renderCreators() {
     const grid = document.getElementById("creators-grid");
     if (!grid) return;
+    grid.replaceChildren();
 
-    grid.innerHTML = "";
-    CREATOR_SAMPLE_DATA.forEach((creator) => {
-        grid.appendChild(createCreatorCard(creator));
-    });
+    if (!currentSessionUser || !window.coucouSupabase) {
+        grid.textContent = "Sign in to discover Coucou members.";
+        return;
+    }
+    if (!discoverProfiles.length) {
+        grid.textContent = "No public Coucou members to show yet.";
+        return;
+    }
+
+    for (const profile of discoverProfiles) {
+        grid.appendChild(await createCreatorCard(profile));
+    }
+}
+
+async function loadDiscoverUsers() {
+    const grid = document.getElementById("creators-grid");
+    if (!grid) return;
+    if (!currentSessionUser || !window.coucouSupabase) {
+        discoverProfiles = [];
+        await renderCreators();
+        return;
+    }
+
+    grid.textContent = "Loading Coucou members...";
+    try {
+        const { data, error } = await window.coucouSupabase.rpc("list_coucou_profiles");
+        if (error) throw error;
+        discoverProfiles = data || [];
+        try {
+            const avatarUrls = await getSignedMediaUrls(discoverProfiles.map((profile) => profile.avatar_path));
+            discoverProfiles.forEach((profile) => {
+                profile.avatar_url = avatarUrls.get(profile.avatar_path) || "";
+            });
+        } catch (error) {
+            console.error("[Discover] Profile pictures could not be loaded:", error);
+        }
+        discoverProfiles.forEach((profile) => publicProfilesById.set(profile.public_id, profile));
+        const discoverState = await loadPublicSocialState(discoverProfiles.map((profile) => profile.public_id));
+        discoverState.forEach((state, publicId) => publicSocialState.set(publicId, state));
+        await renderCreators();
+    } catch (error) {
+        grid.textContent = "Discover needs the latest Supabase migration. Apply the profile and social migration, then reload.";
+        console.error("[Discover] Could not load registered profiles:", error);
+    }
 }
 
 // Existing saved movies remain in the Movies collection.
@@ -2809,6 +2805,54 @@ let userSearchRequestId = 0;
 let userSearchResults = [];
 let publicProfilesById = new Map();
 let publicSocialState = new Map();
+let viewedPublicProfileId = null;
+let profileAvatarLoadGeneration = 0;
+
+async function getSignedMediaUrl(path) {
+    if (!path || !window.coucouSupabase) return "";
+    const { data, error } = await window.coucouSupabase
+        .storage
+        .from("coucou-media")
+        .createSignedUrl(path, 3600);
+    if (error) throw error;
+    return data.signedUrl;
+}
+
+async function getSignedMediaUrls(paths) {
+    const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
+    if (!uniquePaths.length || !window.coucouSupabase) return new Map();
+    const { data, error } = await window.coucouSupabase
+        .storage.from("coucou-media")
+        .createSignedUrls(uniquePaths, 3600);
+    if (error) throw error;
+    return new Map((data || []).map((image) => [image.path, image.signedUrl]));
+}
+
+function renderProfileAvatar(profile) {
+    const image = document.getElementById("profile-picture-image");
+    const placeholder = document.getElementById("profile-picture-placeholder");
+    const generation = ++profileAvatarLoadGeneration;
+    if (!image || !placeholder) return;
+    image.hidden = true;
+    image.removeAttribute("src");
+    placeholder.hidden = false;
+    if (!profile || !profile.avatar_path) return;
+
+    void getSignedMediaUrl(profile.avatar_path).then((url) => {
+        if (generation !== profileAvatarLoadGeneration || !url) return;
+        image.src = url;
+        image.hidden = false;
+        placeholder.hidden = true;
+    }).catch((error) => {
+        console.error("[Profile] Could not load profile picture:", error);
+    });
+}
+
+function getFollowButtonLabel(state) {
+    if (state && state.is_following) return "Following";
+    if (state && state.has_pending_request) return "Request sent";
+    return "Follow";
+}
 
 function setProfileAuthState(message, isError) {
     const state = document.getElementById("profile-auth-state");
@@ -2849,6 +2893,13 @@ function createPublicUserCard(profile, socialState, includeViewAction) {
     publicId.textContent = `Coucou ID: ${profile.public_id}`;
     card.appendChild(publicId);
 
+    if (profile.is_private) {
+        const privacy = document.createElement("p");
+        privacy.className = "private-profile-notice";
+        privacy.textContent = "Private account";
+        card.appendChild(privacy);
+    }
+
     if (profile.bio) {
         const bio = document.createElement("p");
         bio.className = "public-user-bio";
@@ -2878,7 +2929,7 @@ function createPublicUserCard(profile, socialState, includeViewAction) {
         followButton.dataset.userAction = "follow";
         followButton.dataset.publicId = profile.public_id;
         followButton.setAttribute("aria-pressed", String(Boolean(socialState && socialState.is_following)));
-        followButton.textContent = socialState && socialState.is_following ? "Following" : "Follow";
+        followButton.textContent = getFollowButtonLabel(socialState);
         card.appendChild(followButton);
     }
 
@@ -2907,8 +2958,25 @@ function renderPublicProfileView(profile, socialState) {
     const publicId = document.createElement("p");
     publicId.textContent = `Coucou ID: ${profile.public_id}`;
     profileView.appendChild(publicId);
-    if (profile.bio) {
+    const canView = !profile.is_private || profile.can_view;
+    if (profile.is_private && !canView) {
+        const notice = document.createElement("p");
+        notice.className = "private-profile-notice";
+        notice.textContent = "This account is private. Send a follow request to see the profile and posts.";
+        profileView.appendChild(notice);
+    }
+    if (profile.avatar_path && canView) {
+        const avatar = document.createElement("img");
+        avatar.className = "public-user-avatar";
+        avatar.alt = "Profile picture";
+        profileView.appendChild(avatar);
+        void getSignedMediaUrl(profile.avatar_path).then((url) => {
+            if (url && avatar.isConnected) avatar.src = url;
+        }).catch((error) => console.error("[Profile] Could not load profile picture:", error));
+    }
+    if (profile.bio && canView) {
         const bio = document.createElement("p");
+        bio.className = "public-profile-bio";
         bio.textContent = profile.bio;
         profileView.appendChild(bio);
     }
@@ -2925,16 +2993,18 @@ function renderPublicProfileView(profile, socialState) {
         followButton.dataset.userAction = "follow";
         followButton.dataset.publicId = profile.public_id;
         followButton.setAttribute("aria-pressed", String(Boolean(socialState && socialState.is_following)));
-        followButton.textContent = socialState && socialState.is_following ? "Following" : "Follow";
+        followButton.textContent = getFollowButtonLabel(socialState);
         profileView.appendChild(followButton);
     }
 
+    viewedPublicProfileId = profile.public_id;
     const backButton = document.createElement("button");
     backButton.type = "button";
     backButton.className = "secondary-auth-button";
     backButton.textContent = "Back to results";
     backButton.addEventListener("click", () => {
         profileView.hidden = true;
+        viewedPublicProfileId = null;
         document.getElementById("user-search-input")?.focus();
     }, { once: true });
     profileView.appendChild(backButton);
@@ -2943,7 +3013,7 @@ function renderPublicProfileView(profile, socialState) {
 
 async function loadPublicSocialState(publicIds) {
     if (!window.coucouSupabase || !currentSessionUser || !publicIds.length) return new Map();
-    const { data, error } = await window.coucouSupabase.rpc("get_public_user_social_state", {
+    const { data, error } = await window.coucouSupabase.rpc("get_coucou_social_state", {
         p_public_ids: publicIds
     });
     if (error) throw error;
@@ -2961,8 +3031,7 @@ async function searchPublicUsers() {
     profileView.hidden = true;
     resultsContainer.replaceChildren();
     userSearchResults = [];
-    publicProfilesById = new Map();
-    publicSocialState = new Map();
+    publicProfilesById = new Map(discoverProfiles.map((profile) => [profile.public_id, profile]));
 
     if (!currentSessionUser) {
         setUserSearchState("Sign in to search for and follow people.", true);
@@ -2975,7 +3044,7 @@ async function searchPublicUsers() {
 
     setUserSearchState("Searching...");
     try {
-        const { data, error } = await window.coucouSupabase.rpc("search_public_profiles", {
+        const { data, error } = await window.coucouSupabase.rpc("search_coucou_profiles", {
             p_query: query
         });
         if (requestId !== userSearchRequestId) return;
@@ -2991,8 +3060,10 @@ async function searchPublicUsers() {
             }
         });
         userSearchResults = Array.from(profilesByPublicId.values()).slice(0, 12);
-        publicProfilesById = new Map(userSearchResults.map((profile) => [profile.public_id, profile]));
-        publicSocialState = await loadPublicSocialState(userSearchResults.map((profile) => profile.public_id));
+        publicProfilesById = new Map(discoverProfiles.map((profile) => [profile.public_id, profile]));
+        userSearchResults.forEach((profile) => publicProfilesById.set(profile.public_id, profile));
+        const searchState = await loadPublicSocialState(userSearchResults.map((profile) => profile.public_id));
+        searchState.forEach((state, publicId) => publicSocialState.set(publicId, state));
         if (requestId !== userSearchRequestId) return;
         renderUserSearchResults();
         setUserSearchState(userSearchResults.length ? `${userSearchResults.length} people found.` : "No matching people found.");
@@ -3005,31 +3076,20 @@ async function searchPublicUsers() {
 async function refreshPublicSocialState() {
     const publicIds = userSearchResults.map((profile) => profile.public_id);
     let ownPublicId = currentProfile && currentProfile.public_id;
-    if (currentSessionUser && !ownPublicId) {
-        const { data, error } = await window.coucouSupabase
-            .from("profiles")
-            .select("public_id")
-            .eq("id", currentSessionUser.id)
-            .maybeSingle();
-        if (error) throw error;
-        ownPublicId = data && data.public_id;
-        if (ownPublicId && currentProfile) currentProfile = { ...currentProfile, public_id: ownPublicId };
-    }
     if (ownPublicId) publicIds.push(ownPublicId);
     if (!publicIds.length) {
         const profileState = document.getElementById("profile-social-state");
         if (currentSessionUser && profileState) {
-            profileState.textContent = "Follower counts are unavailable for this profile.";
+            profileState.textContent = "Apply the Coucou profile and social migration to enable follower counts.";
         }
         return;
     }
-    publicSocialState = await loadPublicSocialState(Array.from(new Set(publicIds)));
+    const latestState = await loadPublicSocialState(Array.from(new Set(publicIds)));
+    latestState.forEach((state, publicId) => publicSocialState.set(publicId, state));
     renderUserSearchResults();
+    await renderCreators();
 
-    const viewedProfile = publicProfilesById.get(
-        document.querySelector("#public-profile-view [data-public-id]")?.dataset.publicId
-    );
-    if (viewedProfile) renderPublicProfileView(viewedProfile, publicSocialState.get(viewedProfile.public_id));
+    if (viewedPublicProfileId) await loadViewedPublicProfile(viewedPublicProfileId);
     const ownState = currentProfile && publicSocialState.get(currentProfile.public_id);
     const followers = document.getElementById("profile-follower-count");
     const following = document.getElementById("profile-following-count");
@@ -3039,7 +3099,36 @@ async function refreshPublicSocialState() {
         following.textContent = String(ownState.following_count);
         if (profileState) profileState.textContent = "";
     } else if (currentSessionUser && profileState) {
-        profileState.textContent = "Follower counts are unavailable until the social database migration is applied.";
+        profileState.textContent = "Follower counts are unavailable until the Coucou profile and social migration is applied.";
+    }
+}
+
+async function loadViewedPublicProfile(publicId) {
+    const profileView = document.getElementById("public-profile-view");
+    try {
+        const { data, error } = await window.coucouSupabase.rpc("get_coucou_profile", {
+            p_public_id: publicId
+        });
+        if (error) throw error;
+        const profile = data && data[0];
+        if (!profile) {
+            setUserSearchState("This profile is no longer available.", true);
+            return;
+        }
+        publicProfilesById.set(publicId, profile);
+        publicSocialState.set(publicId, {
+            followers_count: profile.followers_count,
+            following_count: profile.following_count,
+            is_following: profile.is_following,
+            has_pending_request: profile.has_pending_request
+        });
+        renderPublicProfileView(profile, publicSocialState.get(publicId));
+        if (profileView) profileView.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+        if (profileView) {
+            profileView.hidden = false;
+            profileView.textContent = `Could not load this profile: ${error.message || "Please try again."}`;
+        }
     }
 }
 
@@ -3049,8 +3138,7 @@ async function handlePublicUserAction(button) {
     if (!profile) return;
 
     if (button.dataset.userAction === "view") {
-        renderPublicProfileView(profile, publicSocialState.get(publicId));
-        document.getElementById("public-profile-view").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        await loadViewedPublicProfile(publicId);
         return;
     }
     if (button.dataset.userAction !== "follow" || !currentSessionUser) return;
@@ -3058,22 +3146,101 @@ async function handlePublicUserAction(button) {
     const state = publicSocialState.get(publicId);
     const shouldFollow = !(state && state.is_following);
     button.disabled = true;
-    button.textContent = shouldFollow ? "Following..." : "Unfollowing...";
+    button.textContent = shouldFollow ? "Sending request..." : "Unfollowing...";
     try {
-        const { error } = await window.coucouSupabase.rpc(
-            shouldFollow ? "follow_user_by_public_id" : "unfollow_user_by_public_id",
-            { p_public_id: publicId }
-        );
+        const action = state && state.has_pending_request
+            ? "cancel_follow_request"
+            : shouldFollow
+                ? "request_follow_by_public_id"
+                : "unfollow_user_by_public_id";
+        const { error } = await window.coucouSupabase.rpc(action, { p_public_id: publicId });
         if (error) throw error;
         await refreshPublicSocialState();
+        await loadDiscoverUsers();
         const updated = publicSocialState.get(publicId);
         const displayName = profile.username ? `@${profile.username}` : profile.public_id;
-        setUserSearchState(updated && updated.is_following ? `Following ${displayName}.` : `Unfollowed ${displayName}.`);
+        setUserSearchState(
+            updated && updated.is_following
+                ? `Following ${displayName}.`
+                : updated && updated.has_pending_request
+                    ? `Follow request sent to ${displayName}.`
+                    : `Follow status updated for ${displayName}.`
+        );
     } catch (error) {
         button.disabled = false;
-        button.textContent = state && state.is_following ? "Following" : "Follow";
+        button.textContent = getFollowButtonLabel(state);
         setUserSearchState(`Could not update follow status: ${error.message || "Please try again."}`, true);
     }
+}
+
+let followRequestsInitialized = false;
+
+async function loadFollowRequests() {
+    const list = document.getElementById("follow-requests-list");
+    const state = document.getElementById("follow-requests-state");
+    if (!list || !state) return;
+    if (!currentSessionUser || !window.coucouSupabase || !currentProfile || !currentProfile.public_id) {
+        list.replaceChildren();
+        state.textContent = currentSessionUser
+            ? "Apply the Coucou profile and social migration to manage follow requests."
+            : "";
+        return;
+    }
+
+    try {
+        const { data, error } = await window.coucouSupabase.rpc("get_follow_requests");
+        if (error) throw error;
+        list.replaceChildren();
+        (data || []).forEach((request) => {
+            const item = document.createElement("div");
+            item.className = "follow-request-item";
+            item.dataset.publicId = request.public_id;
+            const name = document.createElement("span");
+            name.textContent = request.username ? `@${request.username}` : "Coucou member";
+            item.appendChild(name);
+            const actions = document.createElement("div");
+            actions.className = "follow-request-actions";
+            [["accept", "Accept"], ["decline", "Decline"]].forEach(([action, label]) => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.dataset.followRequestAction = action;
+                button.textContent = label;
+                actions.appendChild(button);
+            });
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+        state.textContent = data && data.length ? `${data.length} pending follow request${data.length === 1 ? "" : "s"}.` : "No pending follow requests.";
+    } catch (error) {
+        state.textContent = `Follow requests could not be loaded: ${error.message || "Please try again."}`;
+        console.error("[Follows] Could not load follow requests:", error);
+    }
+}
+
+function initFollowRequests() {
+    if (followRequestsInitialized) return;
+    const list = document.getElementById("follow-requests-list");
+    if (!list) return;
+    followRequestsInitialized = true;
+    list.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-follow-request-action]");
+        const item = button && button.closest(".follow-request-item");
+        if (!button || !item || !currentSessionUser) return;
+        button.disabled = true;
+        try {
+            const { error } = await window.coucouSupabase.rpc("respond_follow_request", {
+                p_public_id: item.dataset.publicId,
+                p_accept: button.dataset.followRequestAction === "accept"
+            });
+            if (error) throw error;
+            await Promise.all([loadFollowRequests(), refreshPublicSocialState()]);
+        } catch (error) {
+            button.disabled = false;
+            const state = document.getElementById("follow-requests-state");
+            if (state) state.textContent = `Could not update follow request: ${error.message || "Please try again."}`;
+            console.error("[Follows] Could not update follow request:", error);
+        }
+    });
 }
 
 function initUserSearch() {
@@ -3097,6 +3264,7 @@ function initUserSearch() {
         if (!button || !discoverSection.contains(button)) return;
         void handlePublicUserAction(button);
     });
+    void loadDiscoverUsers();
 }
 
 function renderPosts(posts) {
@@ -3117,22 +3285,45 @@ async function loadPostsFromSupabase() {
         return;
     }
 
-    let query = await window.coucouSupabase
-        .from("posts")
-        .select(`
+    const mediaSchemaAvailable = Boolean(currentSessionUser && currentProfile && currentProfile.public_id);
+    const basePostSelection = `
             id,
             author_id,
             text,
             created_at,
             author:profiles!posts_author_id_fkey(username),
             comments(id, post_id, author_id, text, created_at, commenter:profiles!comments_author_id_fkey(username))
-        `)
+        `;
+    const mediaPostSelection = `
+            id,
+            author_id,
+            text,
+            image_paths,
+            created_at,
+            author:profiles!posts_author_id_fkey(username, avatar_path, public_id),
+            comments(id, post_id, author_id, text, created_at, commenter:profiles!comments_author_id_fkey(username))
+        `;
+    let query = await window.coucouSupabase
+        .from("posts")
+        .select(mediaSchemaAvailable ? mediaPostSelection : basePostSelection)
         .order("created_at", { ascending: false });
 
-    if (query.error && /profiles|relationship/i.test(query.error.message || "")) {
+    if (query.error && mediaSchemaAvailable) {
+        query = await window.coucouSupabase
+            .from("posts")
+            .select(basePostSelection)
+            .order("created_at", { ascending: false });
+    }
+    if (query.error) {
         query = await window.coucouSupabase
             .from("posts")
             .select("id, author_id, text, created_at, comments(id, post_id, author_id, text, created_at)")
+            .order("created_at", { ascending: false });
+    }
+    if (query.error) {
+        query = await window.coucouSupabase
+            .from("posts")
+            .select("id, author_id, text, created_at")
             .order("created_at", { ascending: false });
     }
 
@@ -3143,6 +3334,23 @@ async function loadPostsFromSupabase() {
     }
 
     const posts = query.data || [];
+    const mediaPaths = mediaSchemaAvailable
+        ? Array.from(new Set(posts.flatMap((post) => post.image_paths || [])))
+        : [];
+    if (mediaPaths.length) {
+        try {
+            const { data: signedImages, error: signedImageError } = await window.coucouSupabase
+                .storage.from("coucou-media")
+                .createSignedUrls(mediaPaths, 3600);
+            if (signedImageError) throw signedImageError;
+            const urlsByPath = new Map((signedImages || []).map((image) => [image.path, image.signedUrl]));
+            posts.forEach((post) => {
+                post.image_urls = (post.image_paths || []).map((path) => urlsByPath.get(path)).filter(Boolean);
+            });
+        } catch (error) {
+            console.error("[Posts] Post images could not be loaded:", error);
+        }
+    }
     renderPosts(posts);
     const postCount = document.getElementById("profile-post-count");
     if (postCount && currentSessionUser) {
@@ -3166,7 +3374,17 @@ async function loadUserProfile(user) {
         return null;
     }
 
-    return data;
+    const { data: extendedData, error: extendedError } = await window.coucouSupabase
+        .from("profiles")
+        .select("public_id, is_private, avatar_path")
+        .eq("id", user.id)
+        .maybeSingle();
+    if (extendedError) {
+        console.warn("[Profile] Privacy and media fields are not available yet:", extendedError.message);
+        return { ...data, public_id: null, is_private: false, avatar_path: null };
+    }
+
+    return { ...data, ...extendedData };
 }
 
 // Auto-creates the profile row from signup metadata on first real session, so
@@ -3182,7 +3400,7 @@ async function ensureProfileForUser(user) {
         return profile;
     }
 
-    const { data, error } = await window.coucouSupabase
+    const { error } = await window.coucouSupabase
         .from("profiles")
         .upsert({
             id: user.id,
@@ -3191,16 +3409,14 @@ async function ensureProfileForUser(user) {
             guidelines_accepted: true,
             privacy_accepted: true,
             updated_at: new Date().toISOString()
-        })
-        .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
-        .single();
+        });
 
     if (error) {
         console.warn("[Profile] Auto-provision from signup metadata failed:", error.message);
         return profile;
     }
 
-    return data;
+    return await loadUserProfile(user);
 }
 
 function updateProfileAuthUi(user, profile) {
@@ -3219,6 +3435,8 @@ function updateProfileAuthUi(user, profile) {
     const accountEmailDisplay = document.getElementById("account-email-display");
     const settingsUsername = document.getElementById("settings-username");
     const settingsBio = document.getElementById("settings-bio");
+    const settingsPrivateAccount = document.getElementById("settings-private-account");
+    const profilePictureUploadButton = document.getElementById("profile-picture-upload-button");
     const confirmEmailTarget = document.getElementById("confirm-email-target");
     const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const confirmBtn = document.getElementById("confirm-delete-account-btn");
@@ -3241,12 +3459,17 @@ function updateProfileAuthUi(user, profile) {
         if (accountEmailDisplay) accountEmailDisplay.textContent = "";
         if (settingsUsername) settingsUsername.value = "";
         if (settingsBio) settingsBio.value = "";
+        if (settingsPrivateAccount) settingsPrivateAccount.checked = false;
+        if (profilePictureUploadButton) profilePictureUploadButton.hidden = true;
+        renderProfileAvatar(null);
         if (signedOutView) signedOutView.hidden = false;
         if (usernameSetup) usernameSetup.hidden = true;
         if (settingsToggle) settingsToggle.hidden = true;
         if (followerCount) followerCount.textContent = "0";
         if (followingCount) followingCount.textContent = "0";
         if (profileSocialState) profileSocialState.textContent = "";
+        void loadDiscoverUsers();
+        void loadFollowRequests();
         if (!passwordRecoveryActive) {
             setUserSearchState("");
             userSearchResults = [];
@@ -3282,6 +3505,9 @@ function updateProfileAuthUi(user, profile) {
     if (accountEmailDisplay) accountEmailDisplay.textContent = user.email || "";
     if (settingsUsername) settingsUsername.value = username || "";
     if (settingsBio) settingsBio.value = profile && profile.bio ? profile.bio : "";
+    if (settingsPrivateAccount) settingsPrivateAccount.checked = Boolean(profile && profile.is_private);
+    if (profilePictureUploadButton) profilePictureUploadButton.hidden = false;
+    renderProfileAvatar(profile);
     if (confirmEmailTarget) confirmEmailTarget.textContent = user?.email || "";
     if (signedOutView) signedOutView.hidden = true;
     if (settingsToggle) settingsToggle.hidden = false;
@@ -3300,16 +3526,18 @@ function updateProfileAuthUi(user, profile) {
     );
     if (user) {
         void loadSavedCollectionsForUser(user);
+        void loadDiscoverUsers();
         void refreshPublicSocialState().catch((error) => {
             if (profileSocialState) {
                 profileSocialState.textContent = `Follower counts could not be loaded: ${error.message || "Please try again."}`;
             }
         });
+        void loadFollowRequests();
     }
     void loadPostsFromSupabase();
 }
 
-async function saveUserProfile(username, bio) {
+async function saveUserProfile(username, bio, isPrivate) {
     if (!currentSessionUser || !window.coucouSupabase) return null;
 
     const normalizedUsername = getNormalizedUsername(username);
@@ -3323,27 +3551,105 @@ async function saveUserProfile(username, bio) {
         return null;
     }
 
-    const { data, error } = await window.coucouSupabase
+    const profileUpdate = {
+        id: currentSessionUser.id,
+        username: normalizedUsername,
+        bio: bio || null,
+        age_confirmed: true,
+        guidelines_accepted: true,
+        privacy_accepted: true,
+        updated_at: new Date().toISOString()
+    };
+    if (currentProfile && currentProfile.public_id) {
+        profileUpdate.is_private = Boolean(isPrivate);
+    } else if (isPrivate) {
+        setProfileAuthState("Apply the Coucou profile and social migration before making your account private.", true);
+        return null;
+    }
+
+    const { error } = await window.coucouSupabase
         .from("profiles")
-        .upsert({
-            id: currentSessionUser.id,
-            username: normalizedUsername,
-            bio: bio || null,
-            age_confirmed: true,
-            guidelines_accepted: true,
-            privacy_accepted: true,
-            updated_at: new Date().toISOString()
-        })
-        .select("id, username, bio, age_confirmed, guidelines_accepted, privacy_accepted")
-        .single();
+        .upsert(profileUpdate);
 
     if (error) {
         setProfileAuthState(error.code === "23505" ? "That username is already taken." : error.message, true);
         return null;
     }
 
-    updateProfileAuthUi(currentSessionUser, data);
-    return data;
+    const profile = await loadUserProfile(currentSessionUser);
+    updateProfileAuthUi(currentSessionUser, profile);
+    return profile;
+}
+
+async function uploadProfilePicture(file) {
+    if (!currentSessionUser || !window.coucouSupabase) {
+        setProfileAuthState("Sign in to upload a profile picture.", true);
+        return;
+    }
+    if (!currentProfile || !currentProfile.public_id) {
+        setProfileAuthState("Apply the Coucou profile and social migration before uploading a profile picture.", true);
+        return;
+    }
+    if (!file || !SUPPORTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES) {
+        setProfileAuthState("Choose a supported image smaller than 10 MB.", true);
+        return;
+    }
+
+    const image = document.getElementById("profile-picture-image");
+    const placeholder = document.getElementById("profile-picture-placeholder");
+    const previewUrl = URL.createObjectURL(file);
+    if (image && placeholder) {
+        image.src = previewUrl;
+        image.hidden = false;
+        placeholder.hidden = true;
+    }
+
+    const oldPath = currentProfile.avatar_path;
+    const extension = file.type.split("/")[1].replace("jpeg", "jpg");
+    const path = `${currentSessionUser.id}/avatars/${crypto.randomUUID()}.${extension}`;
+    setProfileAuthState("Uploading profile picture...");
+    try {
+        const { error: uploadError } = await window.coucouSupabase
+            .storage.from("coucou-media")
+            .upload(path, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw uploadError;
+
+        const { error: profileError } = await window.coucouSupabase
+            .from("profiles")
+            .update({ avatar_path: path })
+            .eq("id", currentSessionUser.id);
+        if (profileError) {
+            await window.coucouSupabase.storage.from("coucou-media").remove([path]);
+            throw profileError;
+        }
+
+        currentProfile = await loadUserProfile(currentSessionUser);
+        updateProfileAuthUi(currentSessionUser, currentProfile);
+        setProfileAuthState("Profile picture updated.");
+        if (oldPath && oldPath !== path) {
+            const { error: removeError } = await window.coucouSupabase
+                .storage.from("coucou-media")
+                .remove([oldPath]);
+            if (removeError) console.warn("[Profile] Old profile picture cleanup failed:", removeError.message);
+        }
+    } catch (error) {
+        renderProfileAvatar(currentProfile);
+        setProfileAuthState(`Profile picture could not be uploaded: ${error.message || "Please try again."}`, true);
+    } finally {
+        URL.revokeObjectURL(previewUrl);
+    }
+}
+
+function initProfileMedia() {
+    const uploadButton = document.getElementById("profile-picture-upload-button");
+    const fileInput = document.getElementById("profile-picture-input");
+    if (!uploadButton || !fileInput) return;
+    uploadButton.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = "";
+        if (file) void uploadProfilePicture(file);
+    });
 }
 
 async function submitProfileAuth(action) {
@@ -3599,6 +3905,8 @@ function initProfileAuth() {
     const confirmEmailInput = document.getElementById("delete-confirm-email-input");
     const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
     initPasswordRecoveryForms();
+    initFollowRequests();
+    initProfileMedia();
 
     if (!form || !signOutButton) return;
 
@@ -3692,7 +4000,12 @@ function initProfileAuth() {
             event.preventDefault();
             const usernameInput = document.getElementById("settings-username");
             const bioInput = document.getElementById("settings-bio");
-            const profile = await saveUserProfile(usernameInput ? usernameInput.value : "", bioInput ? bioInput.value : "");
+            const privateInput = document.getElementById("settings-private-account");
+            const profile = await saveUserProfile(
+                usernameInput ? usernameInput.value : "",
+                bioInput ? bioInput.value : "",
+                privateInput && privateInput.checked
+            );
             if (profile) setProfileAuthState("Profile saved.");
         });
     }
@@ -3866,25 +4179,30 @@ function initProfileAuth() {
 async function syncPostToSupabase(postData) {
     if (!window.coucouSupabase || !currentSessionUser) return null;
 
-    try {
-        const { data: insertedData, error } = await window.coucouSupabase
+    const newPost = {
+        id: postData.id,
+        author_id: currentSessionUser.id,
+        text: postData.text,
+        image_paths: postData.image_paths || []
+    };
+    let result = await window.coucouSupabase
+        .from("posts")
+        .insert(newPost)
+        .select("id, author_id, text, image_paths, created_at")
+        .single();
+
+    if (result.error && !newPost.image_paths.length && /image_paths|column/i.test(result.error.message || "")) {
+        result = await window.coucouSupabase
             .from("posts")
-            .insert({
-                author_id: currentSessionUser.id,
-                text: postData.text
-            })
+            .insert({ id: postData.id, author_id: currentSessionUser.id, text: postData.text })
             .select("id, author_id, text, created_at")
             .single();
-
-        if (error) {
-            throw error;
-        }
-
-        return insertedData;
-    } catch (error) {
-        console.error("[Posts] Supabase post sync failed:", error);
-        return null;
     }
+    if (result.error) {
+        console.error("[Posts] Supabase post sync failed:", result.error);
+        throw result.error;
+    }
+    return result.data;
 }
 
 function isUserPostAuthor(postData, user) {
@@ -3910,7 +4228,35 @@ async function handlePostDelete(postData, postElement) {
         return;
     }
 
+    if (postData.image_paths && postData.image_paths.length) {
+        const { error: mediaError } = await window.coucouSupabase
+            .storage.from("coucou-media")
+            .remove(postData.image_paths);
+        if (mediaError) console.error("[Posts] Deleted post media cleanup failed:", mediaError.message);
+    }
     void loadPostsFromSupabase();
+}
+
+async function handlePostEdit(postData, contentElement) {
+    if (!window.coucouSupabase || !currentSessionUser || postData.author_id !== currentSessionUser.id) return;
+    const nextText = window.prompt("Edit your caption", postData.text || "");
+    if (nextText === null || nextText === postData.text) return;
+    if (!nextText.trim() && !(postData.image_paths && postData.image_paths.length)) {
+        setProfileAuthState("A post needs text or at least one photo.", true);
+        return;
+    }
+
+    const { error } = await window.coucouSupabase
+        .from("posts")
+        .update({ text: nextText })
+        .eq("id", postData.id);
+    if (error) {
+        setProfileAuthState(`Post could not be updated: ${error.message}`, true);
+        console.error("[Posts] Supabase post update failed:", error);
+        return;
+    }
+    postData.text = nextText;
+    if (contentElement) contentElement.textContent = nextText;
 }
 
 async function syncCommentToSupabase(postData, commentObj) {
@@ -4010,20 +4356,44 @@ function createPostElement(postData) {
     header.appendChild(time);
 
     if (currentSessionUser && isUserPostAuthor(postData, currentSessionUser)) {
+        const editPostBtn = document.createElement("button");
+        editPostBtn.type = "button";
+        editPostBtn.className = "post-edit-btn";
+        editPostBtn.textContent = "Edit";
+        editPostBtn.addEventListener("click", () => {
+            void handlePostEdit(postData, content);
+        });
+        header.appendChild(editPostBtn);
+
         const deletePostBtn = document.createElement("button");
         deletePostBtn.type = "button";
         deletePostBtn.className = "post-delete-btn";
         deletePostBtn.title = "Delete post";
-        deletePostBtn.textContent = "🗑️ Delete";
+        deletePostBtn.textContent = "Delete";
         deletePostBtn.addEventListener("click", () => {
-            handlePostDelete(postData, post);
+            void handlePostDelete(postData, post);
         });
         header.appendChild(deletePostBtn);
     }
 
+    const imageUrls = Array.isArray(postData.image_urls) ? postData.image_urls : [];
+    if (imageUrls.length) {
+        const gallery = document.createElement("div");
+        gallery.className = "post-image-gallery";
+        imageUrls.forEach((url, index) => {
+            const image = document.createElement("img");
+            image.src = url;
+            image.alt = `Post photo ${index + 1}`;
+            image.loading = "lazy";
+            gallery.appendChild(image);
+        });
+        post.appendChild(gallery);
+    }
+
     const content = document.createElement("p");
     content.className = "post-content";
-    content.textContent = postData.text;
+    content.textContent = postData.text || "";
+    if (!postData.text) content.hidden = true;
 
     const actions = document.createElement("div");
     actions.className = "post-actions";
@@ -4157,11 +4527,167 @@ function createPostElement(postData) {
     commentsWrap.appendChild(commentList);
 
     post.appendChild(header);
-    post.appendChild(content);
+    if (postData.text) post.appendChild(content);
     post.appendChild(actions);
     post.appendChild(commentsWrap);
 
     return post;
+}
+
+const MAX_POST_PHOTOS = 5;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "image/avif",
+    "image/gif"
+]);
+let selectedPostPhotos = [];
+
+function setPostMediaState(message, isError) {
+    const state = document.getElementById("post-media-state");
+    if (!state) return;
+    state.textContent = message || "";
+    state.classList.toggle("error", Boolean(isError));
+}
+
+function renderPostImagePreview() {
+    const preview = document.getElementById("post-image-preview");
+    if (!preview) return;
+    preview.replaceChildren();
+
+    selectedPostPhotos.forEach((photo, index) => {
+        const item = document.createElement("div");
+        item.className = "post-image-preview-item";
+        const image = document.createElement("img");
+        image.src = photo.previewUrl;
+        image.alt = `Selected photo ${index + 1}`;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", `Remove photo ${index + 1}`);
+        remove.addEventListener("click", () => {
+            URL.revokeObjectURL(photo.previewUrl);
+            selectedPostPhotos = selectedPostPhotos.filter((selected) => selected !== photo);
+            renderPostImagePreview();
+            setPostMediaState("");
+        });
+        item.appendChild(image);
+        item.appendChild(remove);
+        preview.appendChild(item);
+    });
+}
+
+function addPostPhotos(files) {
+    const chosenFiles = Array.from(files || []);
+    if (selectedPostPhotos.length + chosenFiles.length > MAX_POST_PHOTOS) {
+        setPostMediaState(`Choose up to ${MAX_POST_PHOTOS} photos per post.`, true);
+        return;
+    }
+    if (chosenFiles.some((file) => !SUPPORTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES)) {
+        setPostMediaState("Choose supported image files smaller than 10 MB each.", true);
+        return;
+    }
+    chosenFiles.forEach((file) => {
+        selectedPostPhotos.push({ file, previewUrl: URL.createObjectURL(file) });
+    });
+    renderPostImagePreview();
+    setPostMediaState(selectedPostPhotos.length ? `${selectedPostPhotos.length} photo${selectedPostPhotos.length === 1 ? "" : "s"} selected.` : "");
+}
+
+async function uploadPostPhotos(postId) {
+    const uploadedPaths = [];
+    try {
+        for (const photo of selectedPostPhotos) {
+            const subtype = photo.file.type.split("/")[1] || "jpg";
+            const extension = subtype.replace("jpeg", "jpg");
+            const path = `${currentSessionUser.id}/posts/${postId}/${crypto.randomUUID()}.${extension}`;
+            const { error } = await window.coucouSupabase
+                .storage.from("coucou-media")
+                .upload(path, photo.file, { contentType: photo.file.type, upsert: false });
+            if (error) throw error;
+            uploadedPaths.push(path);
+        }
+        return uploadedPaths;
+    } catch (error) {
+        if (uploadedPaths.length) {
+            const { error: cleanupError } = await window.coucouSupabase
+                .storage.from("coucou-media")
+                .remove(uploadedPaths);
+            if (cleanupError) console.error("[Posts] Failed upload cleanup:", cleanupError.message);
+        }
+        throw error;
+    }
+}
+
+function clearPostPhotos() {
+    selectedPostPhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    selectedPostPhotos = [];
+    renderPostImagePreview();
+    setPostMediaState("");
+}
+
+function initPostMedia() {
+    const galleryButton = document.getElementById("post-gallery-button");
+    const cameraButton = document.getElementById("post-camera-button");
+    const imageInput = document.getElementById("post-image-input");
+    const cameraInput = document.getElementById("post-camera-input");
+    if (galleryButton && imageInput) {
+        galleryButton.addEventListener("click", async () => {
+            if (!window.coucouCamera || typeof window.coucouCamera.pickImages !== "function") {
+                imageInput.click();
+                return;
+            }
+            galleryButton.disabled = true;
+            setPostMediaState("Opening photo library...");
+            try {
+                const photos = await window.coucouCamera.pickImages();
+                addPostPhotos(photos);
+            } catch (error) {
+                if (!/cancel/i.test(error.message || "")) {
+                    setPostMediaState(`Photo library unavailable: ${error.message || "Please try again."}`, true);
+                }
+            } finally {
+                galleryButton.disabled = false;
+            }
+        });
+        imageInput.addEventListener("change", () => {
+            addPostPhotos(imageInput.files);
+            imageInput.value = "";
+        });
+    }
+    if (cameraButton && cameraInput) {
+        cameraButton.addEventListener("click", async () => {
+            if (!window.coucouCamera || typeof window.coucouCamera.capturePhoto !== "function") {
+                cameraInput.click();
+                return;
+            }
+            cameraButton.disabled = true;
+            setPostMediaState("Opening camera...");
+            try {
+                const photo = await window.coucouCamera.capturePhoto();
+                addPostPhotos([photo]);
+            } catch (error) {
+                setPostMediaState(`Camera unavailable: ${error.message || "Check camera permissions and try again."}`, true);
+            } finally {
+                cameraButton.disabled = false;
+            }
+        });
+        cameraInput.addEventListener("change", () => {
+            addPostPhotos(cameraInput.files);
+            cameraInput.value = "";
+        });
+    }
+    window.addEventListener("coucou-camera-restored", (event) => {
+        addPostPhotos([event.detail]);
+    });
+    window.addEventListener("coucou-camera-restored-error", (event) => {
+        const error = event.detail || {};
+        setPostMediaState(`Camera unavailable: ${error.message || "Check camera permissions and try again."}`, true);
+    });
 }
 
 async function createPost() {
@@ -4173,8 +4699,8 @@ async function createPost() {
     if (!textBox) return;
 
     const text = textBox.value.trim();
-
-    if (text === "") {
+    if (!text && selectedPostPhotos.length === 0) {
+        setPostMediaState("Add a caption or choose at least one photo.", true);
         return;
     }
 
@@ -4183,15 +4709,40 @@ async function createPost() {
         return;
     }
 
-    const postData = {
-        text
-    };
+    if (selectedPostPhotos.length && (!currentProfile || !currentProfile.public_id)) {
+        setPostMediaState("Apply the Coucou profile and social migration before creating photo posts.", true);
+        return;
+    }
 
-    const insertedPost = await syncPostToSupabase(postData);
-    if (!insertedPost) return;
-
-    textBox.value = "";
-    void loadPostsFromSupabase();
+    const postId = crypto.randomUUID();
+    let imagePaths = [];
+    const submitButton = document.querySelector(".create-post-card > button:last-child");
+    if (submitButton) submitButton.disabled = true;
+    try {
+        if (selectedPostPhotos.length) {
+            setPostMediaState("Uploading photos...");
+            imagePaths = await uploadPostPhotos(postId);
+        }
+        await syncPostToSupabase({ id: postId, text, image_paths: imagePaths });
+        textBox.value = "";
+        clearPostPhotos();
+        void loadPostsFromSupabase();
+    } catch (error) {
+        if (imagePaths.length) {
+            const { error: cleanupError } = await window.coucouSupabase
+                .storage.from("coucou-media")
+                .remove(imagePaths);
+            if (cleanupError) console.error("[Posts] Failed post upload cleanup:", cleanupError.message);
+        }
+        setPostMediaState(
+            error.message && /image_paths|text|media/i.test(error.message)
+                ? "This photo post requires the Coucou privacy and media migration. Review and apply the SQL migration, then try again."
+                : `Post could not be saved: ${error.message || "Please try again."}`,
+            true
+        );
+    } finally {
+        if (submitButton) submitButton.disabled = false;
+    }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -4204,7 +4755,8 @@ window.addEventListener("DOMContentLoaded", () => {
     initBookSearch();
     initProfileAuth();
     initUserSearch();
-    renderCreators();
+    initPostMedia();
+    void renderCreators();
     loadFeaturedBooks();
     renderSavedMoviesAndArt();
     renderSavedMusic();

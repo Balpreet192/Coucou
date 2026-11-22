@@ -156,6 +156,14 @@
                                    <div class="create-post-card">
                                           <h3>Create a Post</h3>
                                           <textarea id="post-text" placeholder="Share a thought..."></textarea>
+                                          <div class="post-media-controls">
+                                                 <button type="button" id="post-gallery-button">Choose photos</button>
+                                                 <button type="button" id="post-camera-button">Take a photo</button>
+                                                 <input type="file" id="post-image-input" accept="image/*" multiple hidden>
+                                                 <input type="file" id="post-camera-input" accept="image/*" capture="environment" hidden>
+                                          </div>
+                                          <div id="post-image-preview" class="post-image-preview" aria-live="polite"></div>
+                                          <p id="post-media-state" class="post-media-state" aria-live="polite"></p>
                                           <button type="button" onclick="createPost()">Post</button>
                                    </div>
                                    <div class="my-posts-feed">
@@ -198,8 +206,11 @@
                             <div class="profile-card">
                                    <button type="button" class="profile-settings-toggle" id="profile-settings-toggle" aria-label="Open account settings" hidden>⋯</button>
                                    <div class="profile-picture">
-                                          <p>Photo</p>
+                                          <img id="profile-picture-image" alt="Profile picture" hidden>
+                                          <p id="profile-picture-placeholder">Photo</p>
                                    </div>
+                                   <button type="button" id="profile-picture-upload-button" class="text-button" hidden>Upload profile picture</button>
+                                   <input type="file" id="profile-picture-input" accept="image/*" hidden>
                                    <h2 id="profile-display-name">Your Name</h2>
                                    <p id="profile-display-handle">@username</p>
                                    <p id="profile-bio">Your bio will go here.</p>
@@ -319,8 +330,17 @@
                                                         <span>Optional bio</span>
                                                         <textarea id="settings-bio" rows="3" placeholder="Tell people a little about yourself."></textarea>
                                                  </label>
+                                                 <label class="account-privacy-setting">
+                                                        <input type="checkbox" id="settings-private-account">
+                                                        <span>Private account — approve follow requests before people can see your posts and full profile.</span>
+                                                 </label>
                                                  <button type="submit" class="profile-sign-out">Save profile</button>
                                           </form>
+                                   </section>
+                                   <section class="account-settings-section">
+                                          <h4>Follow requests</h4>
+                                          <p id="follow-requests-state" class="follow-requests-state" aria-live="polite"></p>
+                                          <div id="follow-requests-list" class="follow-requests-list"></div>
                                    </section>
                                    <section class="account-settings-section">
                                           <h4>Password</h4>
