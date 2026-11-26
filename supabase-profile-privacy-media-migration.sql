@@ -58,6 +58,126 @@ BEGIN
 END;
 $$;
 
+-- Inspect the live function catalog before changing anything. In particular,
+-- search_public_profiles(text) is intentionally not replaced: deployed
+-- databases may have a different result descriptor than the checked-in
+-- historical migration. Other functions replaced below must keep their
+-- existing input and output descriptors so PostgreSQL dependencies remain
+-- valid and CREATE OR REPLACE retains the existing function OID.
+DO $$
+DECLARE
+    expected record;
+    function_oid oid;
+    actual_result text;
+    dependent_objects text;
+BEGIN
+    function_oid := to_regprocedure('public.search_public_profiles(text)');
+    IF function_oid IS NOT NULL THEN
+        SELECT pg_get_function_result(function_oid),
+               COALESCE((
+                   SELECT string_agg(
+                       pg_describe_object(dependency.classid, dependency.objid, dependency.objsubid),
+                       '; '
+                   )
+                   FROM pg_depend AS dependency
+                   WHERE dependency.refclassid = 'pg_proc'::regclass
+                     AND dependency.refobjid = function_oid
+                     AND dependency.deptype <> 'i'
+               ), 'none')
+        INTO actual_result, dependent_objects;
+
+        RAISE NOTICE
+            'Preserving public.search_public_profiles(text): existing result %, catalog dependents %.',
+            actual_result,
+            dependent_objects;
+    END IF;
+
+    FOR expected IN
+        SELECT *
+        FROM (VALUES
+            ('public.coucou_can_view_profile(uuid)', 'boolean'),
+            ('public.coucou_profile_is_public(uuid)', 'boolean'),
+            ('public.coucou_profile_is_private(uuid)', 'boolean'),
+            ('public.search_coucou_profiles(text)',
+                'TABLE(public_id text, username text, bio text, avatar_path text, is_private boolean, can_view boolean)'),
+            ('public.list_coucou_profiles()',
+                'TABLE(public_id text, username text, bio text, avatar_path text, is_private boolean, can_view boolean)'),
+            ('public.get_coucou_social_state(text[])',
+                'TABLE(public_id text, followers_count bigint, following_count bigint, is_following boolean, has_pending_request boolean, has_received_request boolean)'),
+            ('public.get_coucou_profile(text)',
+                'TABLE(public_id text, username text, bio text, avatar_path text, is_private boolean, can_view boolean, followers_count bigint, following_count bigint, is_following boolean, has_pending_request boolean)'),
+            ('public.request_follow_by_public_id(text)', 'void'),
+            ('public.cancel_follow_request(text)', 'void'),
+            ('public.respond_follow_request(text, boolean)', 'void'),
+            ('public.get_follow_requests()',
+                'TABLE(public_id text, username text, created_at timestamp with time zone)'),
+            ('public.unfollow_user_by_public_id(text)', 'void'),
+            ('public.follow_user_by_public_id(text)', 'void'),
+            ('public.coucou_can_read_media(text)', 'boolean')
+        ) AS definitions(signature, expected_result)
+    LOOP
+        function_oid := to_regprocedure(expected.signature);
+        IF function_oid IS NULL THEN
+            CONTINUE;
+        END IF;
+
+        SELECT regexp_replace(
+                   lower(pg_get_function_result(function_oid)),
+                   '[[:space:]]',
+                   '',
+                   'g'
+               ),
+               COALESCE((
+                   SELECT string_agg(
+                       pg_describe_object(dependency.classid, dependency.objid, dependency.objsubid),
+                       '; '
+                   )
+                   FROM pg_depend AS dependency
+                   WHERE dependency.refclassid = 'pg_proc'::regclass
+                     AND dependency.refobjid = function_oid
+                     AND dependency.deptype <> 'i'
+               ), 'none')
+        INTO actual_result, dependent_objects;
+
+        IF actual_result <> regexp_replace(
+            lower(expected.expected_result),
+            '[[:space:]]',
+            '',
+            'g'
+        ) THEN
+            RAISE EXCEPTION
+                'Function % already exists with result %, but this migration expects %. No schema changes were applied.',
+                expected.signature,
+                pg_get_function_result(function_oid),
+                expected.expected_result;
+        END IF;
+
+        IF expected.signature IN (
+            'public.follow_user_by_public_id(text)',
+            'public.unfollow_user_by_public_id(text)'
+        ) AND (
+            SELECT procedure.proargnames[1]
+            FROM pg_proc AS procedure
+            WHERE procedure.oid = function_oid
+        ) IS DISTINCT FROM 'p_public_id' THEN
+            RAISE EXCEPTION
+                'Function % has an unexpected input parameter name. Inspect its definition before applying this migration.',
+                expected.signature;
+        END IF;
+
+        IF expected.signature IN (
+            'public.follow_user_by_public_id(text)',
+            'public.unfollow_user_by_public_id(text)'
+        ) THEN
+            RAISE NOTICE
+                'Replacing % in place with unchanged input/result types; catalog dependents: %.',
+                expected.signature,
+                dependent_objects;
+        END IF;
+    END LOOP;
+END;
+$$;
+
 DO $$
 BEGIN
     IF EXISTS (
@@ -255,6 +375,16 @@ CREATE POLICY "Coucou direct follows only target public profiles"
         AND public.coucou_profile_is_public(following_id)
     );
 
+-- Keep the existing RPC's result shape, implementation, and ACL intact while
+-- ensuring its profile reads are filtered by the restrictive RLS policies.
+DO $$
+BEGIN
+    IF to_regprocedure('public.search_public_profiles(text)') IS NOT NULL THEN
+        EXECUTE 'ALTER FUNCTION public.search_public_profiles(text) SECURITY INVOKER';
+    END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.search_coucou_profiles(p_query text)
 RETURNS TABLE (
     public_id text,
@@ -302,34 +432,6 @@ AS $function$
     ORDER BY
         CASE WHEN profile.public_id = input.term THEN 0 ELSE 1 END,
         lower(btrim(COALESCE(profile.username, '')))
-    LIMIT 12;
-$function$;
-
--- Keep the prior RPC safe for already-deployed clients that have not yet
--- switched to search_coucou_profiles.
-CREATE OR REPLACE FUNCTION public.search_public_profiles(p_query text)
-RETURNS TABLE (
-    public_id text,
-    username text,
-    bio text
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public, auth
-AS $function$
-    SELECT
-        profile.public_id,
-        profile.username,
-        CASE WHEN public.coucou_can_view_profile(profile.id) THEN profile.bio ELSE NULL END
-    FROM public.profiles AS profile
-    WHERE auth.uid() IS NOT NULL
-      AND profile.id <> auth.uid()
-      AND (
-          lower(btrim(COALESCE(profile.username, ''))) ILIKE '%' || lower(btrim(COALESCE(p_query, ''))) || '%'
-          OR profile.public_id = lower(btrim(COALESCE(p_query, '')))
-      )
-    ORDER BY profile.username
     LIMIT 12;
 $function$;
 

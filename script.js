@@ -14,6 +14,7 @@ function activateContentSection(targetSection) {
     const target = document.getElementById(targetSection);
     if (!target) return;
 
+    if (targetSection !== "profile") closeNotificationsPanel();
     if (targetSection === "my-posts") setMySpaceView("posts");
     document.querySelectorAll(".content-section").forEach((section) => {
         section.classList.toggle("active", section === target);
@@ -2807,6 +2808,333 @@ let publicProfilesById = new Map();
 let publicSocialState = new Map();
 let viewedPublicProfileId = null;
 let profileAvatarLoadGeneration = 0;
+let notificationsChannel = null;
+let notificationsUserId = null;
+let notificationsLoadGeneration = 0;
+
+const notificationMessages = {
+    new_follower: (notification) => `@${notification.actor_username || "someone"} started following you.`,
+    follow_request: (notification) => `@${notification.actor_username || "someone"} requested to follow you.`,
+    follow_request_accepted: (notification) => `@${notification.actor_username || "someone"} accepted your follow request.`,
+    post_like: (notification) => `@${notification.actor_username || "someone"} liked one of your posts.`,
+    post_comment: (notification) => `@${notification.actor_username || "someone"} commented on one of your posts.`
+};
+
+function setNotificationState(message, isError) {
+    const state = document.getElementById("notifications-state");
+    if (!state) return;
+    state.textContent = message || "";
+    state.classList.toggle("profile-auth-error", Boolean(isError));
+}
+
+function updateNotificationCount(count) {
+    const button = document.getElementById("profile-notifications-button");
+    const badge = document.getElementById("notification-count-badge");
+    const unreadCount = Math.max(0, Number(count) || 0);
+    if (badge) {
+        badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+        badge.hidden = unreadCount === 0;
+    }
+    if (button) {
+        button.setAttribute(
+            "aria-label",
+            unreadCount ? `Notifications, ${unreadCount} unread` : "Notifications"
+        );
+    }
+}
+
+function renderNotifications(notifications, unreadTotal) {
+    const list = document.getElementById("notifications-list");
+    const markAllButton = document.getElementById("notification-mark-all-button");
+    if (!list) return;
+
+    list.replaceChildren();
+    const unreadCount = Number.isFinite(unreadTotal)
+        ? unreadTotal
+        : notifications.filter((notification) => !notification.read_at).length;
+    if (markAllButton) markAllButton.hidden = unreadCount === 0;
+
+    if (!notifications.length) {
+        const empty = document.createElement("p");
+        empty.className = "notification-state";
+        empty.textContent = "You're all caught up.";
+        list.appendChild(empty);
+        return;
+    }
+
+    notifications.forEach((notification) => {
+        const item = document.createElement("article");
+        item.className = `notification-item${notification.read_at ? "" : " unread"}`;
+
+        const copy = document.createElement("div");
+        const message = document.createElement("p");
+        const getMessage = notificationMessages[notification.notification_type];
+        message.textContent = getMessage ? getMessage(notification) : "You have a new notification.";
+        copy.appendChild(message);
+
+        const createdAt = new Date(notification.created_at);
+        if (!Number.isNaN(createdAt.getTime())) {
+            const time = document.createElement("time");
+            time.dateTime = createdAt.toISOString();
+            time.textContent = createdAt.toLocaleString();
+            copy.appendChild(time);
+        }
+        item.appendChild(copy);
+
+        if (!notification.read_at) {
+            const markRead = document.createElement("button");
+            markRead.type = "button";
+            markRead.dataset.notificationRead = notification.id;
+            markRead.textContent = "Mark read";
+            markRead.setAttribute("aria-label", "Mark notification as read");
+            item.appendChild(markRead);
+        } else {
+            const readLabel = document.createElement("span");
+            readLabel.className = "notification-read-label";
+            readLabel.textContent = "Read";
+            item.appendChild(readLabel);
+        }
+
+        list.appendChild(item);
+    });
+}
+
+async function loadNotifications() {
+    const userId = currentSessionUser && currentSessionUser.id;
+    if (!window.coucouSupabase || !userId) return;
+
+    const requestId = ++notificationsLoadGeneration;
+    const [listResult, countResult] = await Promise.all([
+        window.coucouSupabase
+            .from("notifications")
+            .select("id, actor_username, actor_public_id, notification_type, post_id, created_at, read_at")
+            .eq("recipient_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(50),
+        window.coucouSupabase
+            .from("notifications")
+            .select("id", { count: "exact", head: true })
+            .eq("recipient_id", userId)
+            .is("read_at", null)
+    ]);
+
+    if (requestId !== notificationsLoadGeneration ||
+        !currentSessionUser ||
+        currentSessionUser.id !== userId) return;
+
+    if (listResult.error || countResult.error) {
+        const error = listResult.error || countResult.error;
+        setNotificationState(
+            "Notifications are unavailable. Review and apply supabase-notifications-migration.sql, then reload.",
+            true
+        );
+        console.error("[Notifications] Could not load notifications:", error);
+        return;
+    }
+
+    updateNotificationCount(countResult.count || 0);
+    renderNotifications(listResult.data || [], countResult.count || 0);
+    setNotificationState("");
+}
+
+async function loadNotificationPreferences() {
+    const state = document.getElementById("notification-preferences-state");
+    if (!currentSessionUser || !window.coucouSupabase) return;
+
+    const { data, error } = await window.coucouSupabase
+        .from("notification_preferences")
+        .select("new_followers_enabled, follow_requests_enabled, post_likes_enabled, post_comments_enabled")
+        .eq("user_id", currentSessionUser.id)
+        .maybeSingle();
+
+    if (error) {
+        if (state) {
+            state.textContent = "Apply supabase-notifications-migration.sql to manage preferences.";
+            state.classList.add("profile-auth-error");
+        }
+        console.error("[Notifications] Could not load preferences:", error);
+        return;
+    }
+
+    const preferences = data || {};
+    const controls = [
+        ["notification-pref-followers", preferences.new_followers_enabled],
+        ["notification-pref-follow-requests", preferences.follow_requests_enabled],
+        ["notification-pref-post-likes", preferences.post_likes_enabled],
+        ["notification-pref-post-comments", preferences.post_comments_enabled]
+    ];
+    controls.forEach(([id, value]) => {
+        const control = document.getElementById(id);
+        if (control) control.checked = value === undefined ? true : Boolean(value);
+    });
+    if (state) {
+        state.textContent = "";
+        state.classList.remove("profile-auth-error");
+    }
+}
+
+async function saveNotificationPreferences(event) {
+    event.preventDefault();
+    if (!currentSessionUser || !window.coucouSupabase) return;
+
+    const state = document.getElementById("notification-preferences-state");
+    const readChecked = (id) => Boolean(document.getElementById(id)?.checked);
+    const { error } = await window.coucouSupabase
+        .from("notification_preferences")
+        .upsert({
+            user_id: currentSessionUser.id,
+            new_followers_enabled: readChecked("notification-pref-followers"),
+            follow_requests_enabled: readChecked("notification-pref-follow-requests"),
+            post_likes_enabled: readChecked("notification-pref-post-likes"),
+            post_comments_enabled: readChecked("notification-pref-post-comments"),
+            updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" });
+
+    if (error) {
+        if (state) {
+            state.textContent = `Preferences could not be saved: ${error.message || "Please try again."}`;
+            state.classList.add("profile-auth-error");
+        }
+        console.error("[Notifications] Could not save preferences:", error);
+        return;
+    }
+
+    if (state) {
+        state.textContent = "Notification preferences saved.";
+        state.classList.remove("profile-auth-error");
+    }
+}
+
+async function setNotificationsUser(user) {
+    const button = document.getElementById("profile-notifications-button");
+    const badge = document.getElementById("notification-count-badge");
+    const panel = document.getElementById("notifications-panel");
+    const profileCard = document.querySelector(".profile-card");
+    const settings = document.getElementById("profile-account-settings");
+    const userId = user && user.id;
+
+    if (!userId || !window.coucouSupabase) {
+        if (notificationsChannel) {
+            void window.coucouSupabase?.removeChannel(notificationsChannel);
+            notificationsChannel = null;
+        }
+        notificationsUserId = null;
+        notificationsLoadGeneration += 1;
+        if (button) button.hidden = true;
+        if (badge) badge.hidden = true;
+        if (panel) panel.hidden = true;
+        if (profileCard) profileCard.hidden = false;
+        if (settings) settings.hidden = true;
+        renderNotifications([]);
+        return;
+    }
+
+    if (notificationsUserId === userId && notificationsChannel) return;
+    if (notificationsChannel) {
+        void window.coucouSupabase.removeChannel(notificationsChannel);
+        notificationsChannel = null;
+    }
+    notificationsUserId = userId;
+    if (button) button.hidden = false;
+
+    void loadNotifications();
+    void loadNotificationPreferences();
+
+    notificationsChannel = window.coucouSupabase
+        .channel(`notifications:${userId}`)
+        .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `recipient_id=eq.${userId}`
+        }, () => {
+            void loadNotifications();
+        })
+        .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+                void loadNotifications();
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                console.error("[Notifications] Realtime subscription failed:", status);
+            }
+        });
+}
+
+function openNotificationsPanel() {
+    const profileCard = document.querySelector(".profile-card");
+    const settings = document.getElementById("profile-account-settings");
+    const settingsMenu = document.getElementById("profile-settings-menu");
+    const panel = document.getElementById("notifications-panel");
+    if (!currentSessionUser || !panel) return;
+
+    if (settingsMenu) settingsMenu.hidden = true;
+    if (settings) settings.hidden = true;
+    if (profileCard) profileCard.hidden = true;
+    panel.hidden = false;
+    void loadNotifications();
+}
+
+function closeNotificationsPanel() {
+    const profileCard = document.querySelector(".profile-card");
+    const panel = document.getElementById("notifications-panel");
+    if (panel) panel.hidden = true;
+    if (profileCard) profileCard.hidden = false;
+}
+
+async function markNotificationRead(notificationId) {
+    if (!currentSessionUser || !window.coucouSupabase || !notificationId) return;
+    const { error } = await window.coucouSupabase
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", notificationId)
+        .eq("recipient_id", currentSessionUser.id)
+        .is("read_at", null);
+
+    if (error) {
+        setNotificationState(`Could not mark notification as read: ${error.message || "Please try again."}`, true);
+        console.error("[Notifications] Could not mark notification as read:", error);
+        return;
+    }
+    void loadNotifications();
+}
+
+async function markAllNotificationsRead() {
+    if (!currentSessionUser || !window.coucouSupabase) return;
+    const { error } = await window.coucouSupabase
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("recipient_id", currentSessionUser.id)
+        .is("read_at", null);
+
+    if (error) {
+        setNotificationState(`Could not mark notifications as read: ${error.message || "Please try again."}`, true);
+        console.error("[Notifications] Could not mark all as read:", error);
+        return;
+    }
+    void loadNotifications();
+}
+
+function initNotificationUi() {
+    const bell = document.getElementById("profile-notifications-button");
+    const backButton = document.getElementById("notifications-back-button");
+    const markAllButton = document.getElementById("notification-mark-all-button");
+    const list = document.getElementById("notifications-list");
+    const preferencesForm = document.getElementById("notification-preferences-form");
+
+    if (bell) bell.addEventListener("click", openNotificationsPanel);
+    if (backButton) backButton.addEventListener("click", closeNotificationsPanel);
+    if (markAllButton) markAllButton.addEventListener("click", () => void markAllNotificationsRead());
+    if (preferencesForm) {
+        preferencesForm.addEventListener("submit", (event) => {
+            void saveNotificationPreferences(event);
+        });
+    }
+    if (list) {
+        list.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-notification-read]");
+            if (button) void markNotificationRead(button.dataset.notificationRead);
+        });
+    }
+}
 
 async function getSignedMediaUrl(path) {
     if (!path || !window.coucouSupabase) return "";
@@ -3334,6 +3662,34 @@ async function loadPostsFromSupabase() {
     }
 
     const posts = query.data || [];
+    if (posts.length) {
+        const { data: likes, error: likesError } = await window.coucouSupabase
+            .from("post_likes")
+            .select("post_id, user_id")
+            .in("post_id", posts.map((post) => post.id));
+
+        if (likesError) {
+            console.warn("[Posts] Persistent like data is unavailable:", likesError.message);
+            posts.forEach((post) => {
+                post.likes = 0;
+                post.liked = false;
+            });
+        } else {
+            const likeCounts = new Map();
+            const likedPostIds = new Set();
+            (likes || []).forEach((like) => {
+                likeCounts.set(like.post_id, (likeCounts.get(like.post_id) || 0) + 1);
+                if (currentSessionUser && like.user_id === currentSessionUser.id) {
+                    likedPostIds.add(like.post_id);
+                }
+            });
+            posts.forEach((post) => {
+                post.likes = likeCounts.get(post.id) || 0;
+                post.liked = likedPostIds.has(post.id);
+            });
+        }
+    }
+
     const mediaPaths = mediaSchemaAvailable
         ? Array.from(new Set(posts.flatMap((post) => post.image_paths || [])))
         : [];
@@ -3423,6 +3779,7 @@ function updateProfileAuthUi(user, profile) {
     currentSessionUser = user || null;
     authSessionResolved = true;
     currentProfile = profile || null;
+    void setNotificationsUser(user || null);
 
     const name = document.getElementById("profile-display-name");
     const handle = document.getElementById("profile-display-handle");
@@ -3906,6 +4263,7 @@ function initProfileAuth() {
     const deleteConfirmBox = document.getElementById("delete-account-confirm-box");
     initPasswordRecoveryForms();
     initFollowRequests();
+    initNotificationUi();
     initProfileMedia();
 
     if (!form || !signOutButton) return;
@@ -4333,6 +4691,54 @@ function renderCommentItem(commentList, postData, commentObj) {
     commentList.appendChild(commentItem);
 }
 
+async function togglePostLike(postData, postElement, likeButton, likeCount) {
+    if (!currentSessionUser || !window.coucouSupabase) {
+        setProfileAuthState("Sign in to like posts.", true);
+        return;
+    }
+
+    likeButton.disabled = true;
+    const wasLiked = postElement.dataset.liked === "true";
+    try {
+        let result;
+        if (wasLiked) {
+            result = await window.coucouSupabase
+                .from("post_likes")
+                .delete()
+                .eq("post_id", postData.id)
+                .eq("user_id", currentSessionUser.id);
+        } else {
+            result = await window.coucouSupabase
+                .from("post_likes")
+                .insert({ post_id: postData.id, user_id: currentSessionUser.id });
+        }
+
+        if (result.error) throw result.error;
+    } catch (error) {
+        const errorMessage = error && error.message ? error.message : "Please try again.";
+        setProfileAuthState(
+            /post_likes|relation|table/i.test(errorMessage)
+                ? "Post likes require supabase-notifications-migration.sql. Review and apply it in Supabase SQL Editor."
+                : `Your like could not be saved: ${errorMessage}`,
+            true
+        );
+        console.error("[Posts] Post like could not be saved:", error);
+        return;
+    } finally {
+        likeButton.disabled = false;
+    }
+
+    const nextLiked = !wasLiked;
+    const nextCount = Math.max(0, Number(postElement.dataset.likes || 0) + (nextLiked ? 1 : -1));
+    postElement.dataset.liked = String(nextLiked);
+    postElement.dataset.likes = String(nextCount);
+    postData.liked = nextLiked;
+    postData.likes = nextCount;
+    likeButton.classList.toggle("liked", nextLiked);
+    likeButton.setAttribute("aria-pressed", String(nextLiked));
+    likeCount.textContent = String(nextCount);
+}
+
 function createPostElement(postData) {
     const post = document.createElement("div");
     post.className = "post-card";
@@ -4474,22 +4880,7 @@ function createPostElement(postData) {
     }
 
     likeButton.addEventListener("click", () => {
-        const isLiked = post.dataset.liked === "true";
-        const currentLikes = Number(post.dataset.likes || 0);
-
-        if (isLiked) {
-            post.dataset.liked = "false";
-            post.dataset.likes = String(currentLikes - 1);
-            likeButton.classList.remove("liked");
-            likeButton.setAttribute("aria-pressed", "false");
-        } else {
-            post.dataset.liked = "true";
-            post.dataset.likes = String(currentLikes + 1);
-            likeButton.classList.add("liked");
-            likeButton.setAttribute("aria-pressed", "true");
-        }
-
-        likeCount.textContent = post.dataset.likes;
+        void togglePostLike(postData, post, likeButton, likeCount);
     });
 
     commentButton.addEventListener("click", () => {

@@ -205,14 +205,26 @@
                      <div class="profile-container">
                             <div class="profile-card">
                                    <button type="button" class="profile-settings-toggle" id="profile-settings-toggle" aria-label="Open account settings" hidden>⋯</button>
-                                   <div class="profile-picture">
-                                          <img id="profile-picture-image" alt="Profile picture" hidden>
-                                          <p id="profile-picture-placeholder">Photo</p>
+                                   <div class="profile-identity-row">
+                                          <div class="profile-identity">
+                                                 <div class="profile-picture">
+                                                        <img id="profile-picture-image" alt="Profile picture" hidden>
+                                                        <p id="profile-picture-placeholder">Photo</p>
+                                                 </div>
+                                                 <div class="profile-name-group">
+                                                        <h2 id="profile-display-name">Your Name</h2>
+                                                        <p id="profile-display-handle">@username</p>
+                                                 </div>
+                                          </div>
+                                          <button type="button" class="profile-notifications-button" id="profile-notifications-button" aria-label="Notifications" aria-controls="notifications-panel" hidden>
+                                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                        <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+                                                 </svg>
+                                                 <span class="notification-count-badge" id="notification-count-badge" hidden>0</span>
+                                          </button>
                                    </div>
                                    <button type="button" id="profile-picture-upload-button" class="text-button" hidden>Upload profile picture</button>
                                    <input type="file" id="profile-picture-input" accept="image/*" hidden>
-                                   <h2 id="profile-display-name">Your Name</h2>
-                                   <p id="profile-display-handle">@username</p>
                                    <p id="profile-bio">Your bio will go here.</p>
                                    <div class="profile-stats">
                                           <span><strong id="profile-post-count">0</strong> posts</span>
@@ -343,6 +355,17 @@
                                           <div id="follow-requests-list" class="follow-requests-list"></div>
                                    </section>
                                    <section class="account-settings-section">
+                                          <h4>Notification preferences</h4>
+                                          <p id="notification-preferences-state" class="notification-state" aria-live="polite"></p>
+                                          <form class="notification-preferences-form" id="notification-preferences-form">
+                                                 <label><input type="checkbox" id="notification-pref-followers" checked> <span>New followers</span></label>
+                                                 <label><input type="checkbox" id="notification-pref-follow-requests" checked> <span>Follow requests and approvals</span></label>
+                                                 <label><input type="checkbox" id="notification-pref-post-likes" checked> <span>Post likes</span></label>
+                                                 <label><input type="checkbox" id="notification-pref-post-comments" checked> <span>Post comments</span></label>
+                                                 <button type="submit" class="profile-sign-out">Save notification preferences</button>
+                                          </form>
+                                   </section>
+                                   <section class="account-settings-section">
                                           <h4>Password</h4>
                                           <form class="account-settings-form" id="account-password-form">
                                                  <label>
@@ -374,6 +397,16 @@
                                           </div>
                                    </section>
                             </div>
+
+                            <section class="notifications-panel" id="notifications-panel" aria-labelledby="notifications-heading" hidden>
+                                   <div class="notifications-panel-header">
+                                          <button type="button" class="notification-back-button" id="notifications-back-button">Back to profile</button>
+                                          <h2 id="notifications-heading">Notifications</h2>
+                                          <button type="button" class="notification-mark-all-button" id="notification-mark-all-button" hidden>Mark all as read</button>
+                                   </div>
+                                   <p id="notifications-state" class="notification-state" aria-live="polite"></p>
+                                   <div id="notifications-list" class="notifications-list" aria-live="polite"></div>
+                            </section>
                      </div>
               </section>
        </main>
