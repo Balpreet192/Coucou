@@ -371,12 +371,19 @@ header p {
       position: relative;
 }
 
+.profile-card-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 46px;
+      margin: -8px -8px 8px;
+}
+
 .profile-settings-toggle {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      width: 32px;
-      height: 32px;
+      flex: 0 0 40px;
+      width: 40px;
+      height: 40px;
       border: none;
       border-radius: 50%;
       background: #f0f8fd;
@@ -388,7 +395,7 @@ header p {
 
 .profile-settings-menu {
       position: absolute;
-      top: 52px;
+      top: 66px;
       right: 14px;
       min-width: 150px;
       max-width: calc(100% - 28px);
@@ -3232,7 +3239,7 @@ header p {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 18px;
+      gap: 0;
       margin: 4px 18px 12px;
 }
 
@@ -3449,11 +3456,14 @@ header p {
 }
 
 @media (max-width: 480px) {
+      .profile-card-top-row {
+            margin: -2px 0 10px;
+      }
+
       .profile-identity-row {
             justify-content: flex-start;
-            gap: 10px;
-            margin: 12px 0;
-            padding-right: 35px;
+            margin: 8px 0 12px;
+            padding-right: 0;
       }
 
       .profile-identity {

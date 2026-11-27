@@ -204,7 +204,15 @@
               <section id="profile" class="content-section">
                      <div class="profile-container">
                             <div class="profile-card">
-                                   <button type="button" class="profile-settings-toggle" id="profile-settings-toggle" aria-label="Open account settings" hidden>⋯</button>
+                                   <div class="profile-card-top-row">
+                                          <button type="button" class="profile-notifications-button" id="profile-notifications-button" aria-label="Notifications" aria-controls="notifications-panel" hidden>
+                                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                        <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+                                                 </svg>
+                                                 <span class="notification-count-badge" id="notification-count-badge" hidden>0</span>
+                                          </button>
+                                          <button type="button" class="profile-settings-toggle" id="profile-settings-toggle" aria-label="Open account settings" hidden>⋯</button>
+                                   </div>
                                    <div class="profile-identity-row">
                                           <div class="profile-identity">
                                                  <div class="profile-picture">
@@ -216,12 +224,6 @@
                                                         <p id="profile-display-handle">@username</p>
                                                  </div>
                                           </div>
-                                          <button type="button" class="profile-notifications-button" id="profile-notifications-button" aria-label="Notifications" aria-controls="notifications-panel" hidden>
-                                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                                        <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-                                                 </svg>
-                                                 <span class="notification-count-badge" id="notification-count-badge" hidden>0</span>
-                                          </button>
                                    </div>
                                    <button type="button" id="profile-picture-upload-button" class="text-button" hidden>Upload profile picture</button>
                                    <input type="file" id="profile-picture-input" accept="image/*" hidden>
