@@ -93,6 +93,49 @@ header p {
       display: block;
 }
 
+.android-download-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      max-width: 100%;
+      margin-top: 20px;
+      padding: 13px 20px;
+      border: 1px solid #b88a5a;
+      border-radius: 12px;
+      background: #d7a26d;
+      box-shadow: 0 3px 8px rgba(107, 76, 90, 0.14);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.3;
+      text-align: center;
+      text-decoration: none;
+      transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.android-download-button:hover {
+      background: #c8915c;
+      box-shadow: 0 5px 12px rgba(107, 76, 90, 0.2);
+      transform: translateY(-1px);
+}
+
+.android-download-button:focus-visible {
+      outline: 3px solid #6b4c5a;
+      outline-offset: 3px;
+}
+
+.android-download-button svg {
+      flex: 0 0 23px;
+      width: 23px;
+      height: 23px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+}
+
 @keyframes fadeIn {
       from { opacity: 0; }
       to { opacity: 1; }
@@ -2465,6 +2508,12 @@ header p {
 
       .main-content {
             padding: 0 10px 20px;
+      }
+
+      .android-download-button {
+            width: 100%;
+            padding: 12px 14px;
+            font-size: 14px;
       }
 
       .profile-card,
